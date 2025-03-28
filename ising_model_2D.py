@@ -127,7 +127,8 @@ def iso_tebd_ising_2D(L, J, g, p, dts, Nt, t_params):
     peps = b_iso_peps(random_peps(L, L, 2, p), t_params)
     exp_vals = []
     for dt in dts:
-        print(("TEBD2 with dt = {0}\n" + "-" * 15).format(dt))
+    
+        print(("\nTEBD2 with dt = {0}\n" + "-" * 15).format(dt))
         Us = [time_evol(Os[0], dt), time_evol(Os[1], dt)]
         info = peps.tebd2(Os, Us, Nsteps = Nt)
         exp_vals.append(info["exp_vals"][:,1:])
@@ -138,18 +139,18 @@ def iso_tebd_ising_2D(L, J, g, p, dts, Nt, t_params):
     return peps, exp_vals
 
 if __name__ == '__main__':
-    L, Nt = 3, 500
+    L, Nt = 3, 100
     J, g = 1, 3.5
     p = 3
     dts = [0.01, 0.001]
-    chi = 32
+    chi = 8
     t_params = {"tebd_params": {"chi_max": chi, "svd_tol": 0}, 
                 "mm_params": {"chiV_max": chi, "chiH_max": chi, "etaV_max": chi, "etaH_max": chi, "disentangle": False}}
     
     peps, exp_vals = iso_tebd_ising_2D(L, J, g, p, dts, Nt, t_params)
     peps.print()
 
-    E = exp_vals[-1]
+    E = np.sort(exp_vals[:,-1])
     
     H = full_TFI_matrix_2D(L, L, J, g)
     E_ref, _ = eigsh(H, k=p, which='SA')
@@ -162,8 +163,10 @@ if __name__ == '__main__':
     # print('norm of my 2nd vector is {0}'.format(np.linalg.norm(v2)))
     # print('exp val from full is {0}'.format(-np.linalg.norm(H@v2.flatten())))
 
-    print(f"ref  eig 0: {E_ref[0]}")
-    print(f"peps eig 0: {E[-1]} \n")
+    for i in range(p):
+        print(f"ref. eig {i}: {E_ref[i][0]}")
+        print(f"peps eig {i}: {E[i]} \n")
+
     exp_vals = np.sort(exp_vals, axis=0)
     en_den_err = (exp_vals - E_ref)/(L**2)
     for i in range(en_den_err.shape[0]):

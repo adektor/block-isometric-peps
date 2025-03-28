@@ -110,7 +110,7 @@ class b_iso_peps:
         step = 0
         while step < Nsteps:
             if step % 50 == 0:
-                print("Step {0}".format(step))
+                print("iteration {0} out of {1} with max bond dim {2}".format(step, Nsteps, self.tp["tebd_params"]["chi_max"]))
             _ = self._sweep_and_rotate_4x([Us[0], Us[1], Us[0], Us[1]],
                                              Os = [None, None, Os[0], Os[1]])
             
@@ -251,6 +251,7 @@ class b_iso_peps:
 
         if self.Ly == 3 and self.Lx == 3:
             # DOUBLE CHECK BOND DIMENSIONS ARE CORRECT
+            print("\n")
             print(f"\t[-----]  {self.peps[0][0].shape[1]}   [-----]  {self.peps[1][0].shape[1]}   [-----]")
             print("\t|     |------|     |------|     | ")
             print("\t[-----]      [-----]      [-----] ")
@@ -266,7 +267,7 @@ class b_iso_peps:
             print(f"\t[-----]  {self.peps[0][2].shape[1]}   [-----]  {self.peps[1][2].shape[1]}   [-----]   ")
             print("\t|     |------|     |------|     | ")
             print("\t[-----]      [-----]      [-----] ")
-
+            print("\n")
 
 def disentangle(matrix, nsl, nsr, nb, nc, dis_options):
     """ Placeholder function for disentangling. Implement as needed. """
