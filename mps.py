@@ -91,7 +91,7 @@ def orthogonalize(C):
         c = C[i]
         shp = c.shape
         c = np.reshape(c, (shp[0], np.prod(shp[1:])))
-        u, s, v, err = truncated_svd(c, 100)
+        u, s, v, err = truncated_svd(c, 1000)
         us = u@s
         C[i] = np.reshape(v, shp)
         C[i-1] = ncon([us, C[i-1]], ((1, -3), (-1, -2, 1, -4, -5, -6)))

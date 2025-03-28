@@ -119,10 +119,10 @@ def iso_tebd_ising_2D(L, J, g, dts, Nt, t_params):
 
         Returns
         -------
-        peps: block isometric PEPS approximating lowest-lying eigenstates      
+        peps: block isometric PEPS approximating eigenvectors with algebraically smallest eigenvalues
     '''
 
-    Os = [TFI_bonds(L, J, g), TFI_bonds(L, J, 0)]                   # [vertical bonds, horizontal bonds]
+    Os = [TFI_bonds(L, J, 0), TFI_bonds(L, J, g)]                   # [vertical bonds, horizontal bonds]
     peps = b_iso_peps(random_peps(Lx = L, Ly = L, d = 2), t_params)
     for dt in dts:
         print(("with dt = {0}\n" + "-" * 15).format(dt))
@@ -130,17 +130,32 @@ def iso_tebd_ising_2D(L, J, g, dts, Nt, t_params):
         info = peps.tebd2(Os, Us, Nsteps = Nt, min_dE = 1.e-8)
     print("Done")
 
-    return peps
+    return peps, info
 
 if __name__ == '__main__':
-    L, Nt = 3, 1
+    L, Nt = 3, 100
     J, g = 1, 3.5
+    p = 1
     dts = [0.01]
-    t_params = {"tebd_params": {"chi_max": 4, "svd_tol": 0}, 
-                "mm_params": {"chiV_max": 4, "chiH_max": 4, "etaV_max": 4, "etaH_max": 4}}
+    chi = 100
+    t_params = {"tebd_params": {"chi_max": chi, "svd_tol": 0}, 
+                "mm_params": {"chiV_max": chi, "chiH_max": chi, "etaV_max": chi, "etaH_max": chi, "disentangle": False}}
     
-    peps = iso_tebd_ising_2D(L, J, g, dts, Nt, t_params)
+    peps, info = iso_tebd_ising_2D(L, J, g, dts, Nt, t_params)
     peps.print()
+
+    # check this is correctly computing expectation value ...
+    E = info["exp_vals"][-1]
+
+    H = full_TFI_matrix_2D(L, L, J, g)
+    E_ref, _ = eigsh(H, k=p, which='SA')
+
+    v = peps.contract()
+    print('norm of my vector is {0}'.format(np.linalg.norm(v)))
+    print('exp val from full is {0}'.format(-np.linalg.norm(H@v.flatten())))
+
+    print(f"ref  eig 0: {E_ref[0]}")
+    print(f"peps eig 0: {E} \n")
 
     # pdb.set_trace()
     # E = np.sum(info['expectation_O'][2]) + np.sum(info['expectation_O'][3])

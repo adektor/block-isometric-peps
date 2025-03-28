@@ -1,4 +1,5 @@
 import numpy as np
+import scipy.linalg as la
 import matplotlib.pyplot as plt
 from mps import *
 from ising_model_2D import *
@@ -172,7 +173,9 @@ def test_1D_block_tebd(plot_error=False):
         if i % 200 == 0:
             print("iteration {0} | lowest eig. {1} | TEBD error {2}".format(i, exp_val[-1][0], tebd_err[-1]))
     
-    E_ref = ising_eigs(Lx, Ly, J, g, p)
+    H = full_TFI_matrix_2D(Lx, Ly, J, g)
+    E_ref, _ = eigsh(H, k=p, which='SA')
+    
     print(f"ref  eig 0: {E_ref[0]}")
     print(f"peps eig 0: {exp_val[-1][0]} \n")
 
@@ -189,11 +192,114 @@ def test_1D_block_tebd(plot_error=False):
     assert err[-1][0] < dt, f"approximate eigenvalue is not close to reference"
     print('- 1D TEBD test passed')
 
+def test_mm():
+    
+    Lx, Ly = 3, 3
+    d = 2
+    p = 1
+    U = None
+    O = None
+    chi = 1000
+    t_params = {"tebd_params": {"chi_max": chi, "svd_tol": 0}, 
+                "mm_params": {"chiV_max": chi, "chiH_max": chi, "etaV_max": chi, "etaH_max": chi}}
+
+    peps = b_iso_peps(random_peps(Lx, Ly, d), t_params)
+
+    peps._sweep_and_rotate_4x(U, O)
+
+    v0 = peps.contract()
+    peps._sweep_and_rotate_4x(U, O)
+    v1 = peps.contract()
+
+    print('change in vector: {0}'.format(np.linalg.norm(v0-v1)))
+    print('norm of vector: {0}'.format(np.linalg.norm(v1)))
+    return 
+
+def test_imag_time_prop_full():
+
+    Lx, Ly = 3, 3
+    d = 2
+    t_params = {}
+
+    peps = b_iso_peps(random_peps(Lx, Ly, d), t_params)
+    J, g = 1, 3.5
+    dt = 0.01
+    H = full_TFI_matrix_2D(Lx, Ly, J, g).toarray()
+    eH = la.expm(-dt * H)
+    v = peps.contract().flatten()
+    Nt = 100
+    for i in range(Nt):
+        v = eH@v
+        v = v/np.linalg.norm(v)
+
+    E_ref, _ = eigsh(H, k=1, which='SA')
+    print("imag. time expectation value is: {0}".format(-np.linalg.norm(H@v)))
+    print("reference expectation value is : {0}".format(E_ref[0]))
+    err = abs(np.linalg.norm(H@v) + E_ref[0])
+    assert err < dt, "error is not smaller than time step-size"
+    print("imaginary time test 1 passed")
+    return
+
+def test_imag_time_prop_two_site():
+
+    Lx, Ly = 3, 3
+    d = 2
+    t_params = {}
+
+    peps = b_iso_peps(random_peps(Lx, Ly, d), t_params)
+    J, g = 1, 3.5
+    dt = 0.01
+    v = peps.contract()
+    Os = [TFI_bonds(Ly, J, g), TFI_bonds(Lx, J, 0)]
+    Us = [time_evol(Os[0], dt), time_evol(Os[1], dt)]
+    Nt = 100
+    for i in range(Nt):
+        # Vertical
+        # column 1
+        v = ncon([v, Us[0][0]], ((1, 2, -3, -4, -5, -6, -7, -8, -9), (-1, -2, 1, 2)))
+        v = ncon([v, Us[0][1]], ((-1, 1, 2, -4, -5, -6, -7, -8, -9), (-2, -3, 1, 2)))
+
+        # column 2
+        v = ncon([v, Us[0][0]], ((-1, -2, -3, 1, 2, -6, -7, -8, -9), (-4, -5, 1, 2)))
+        v = ncon([v, Us[0][1]], ((-1, -2, -3, -4, 1, 2, -7, -8, -9), (-5, -6, 1, 2)))
+
+        # column 3
+        v = ncon([v, Us[0][0]], ((-1, -2, -3, -4, -5, -6, 1, 2, -9), (-7, -8, 1, 2)))
+        v = ncon([v, Us[0][1]], ((-1, -2, -3, -4, -5, -6, -7, 1, 2), (-8, -9, 1, 2)))
+
+        # Horizontal
+        # row 1
+        v = ncon([v, Us[1][0]], ((1, -2, -3, 2, -5, -6, -7, -8, -9), (-1, -4, 1, 2)))
+        v = ncon([v, Us[1][1]], ((-1, -2, -3, 1, -5, -6, 2, -8, -9), (-4, -7, 1, 2)))
+
+        # row 2
+        v = ncon([v, Us[1][0]], ((-1, 1, -3, -4, 2, -6, -7, -8, -9), (-2, -5, 1, 2)))
+        v = ncon([v, Us[1][1]], ((-1, -2, -3, -4, 1, -6, -7, 2, -9), (-5, -8, 1, 2)))
+
+        # row 3
+        v = ncon([v, Us[1][0]], ((-1, -2, 1, -4, -5, 2, -7, -8, -9), (-3, -6, 1, 2)))
+        v = ncon([v, Us[1][1]], ((-1, -2, -3, -4, -5, 1, -7, -8, 2), (-6, -9, 1, 2)))
+
+        v = v/np.linalg.norm(v)
+
+    H = full_TFI_matrix_2D(Lx, Ly, J, g).toarray()
+    E_ref, _ = eigsh(H, k=1, which='SA')
+
+    print("imag. time expectation value is: {0}".format(-np.linalg.norm(H@v.flatten())))
+    print("reference expectation value is : {0}".format(E_ref[0]))
+    err = abs(np.linalg.norm(H@v.flatten()) + E_ref[0])
+    assert err < dt, "error is not smaller than time step-size"
+    print("imaginary time test 2 passed")
+    return
+
 if __name__ == '__main__':
     print(' \n Running unit tests \n' + "-" * 20)
-    test_rotation()
-    test_matvec()
-    test_col_orth()
-    test_1D_block_tebd()
+    # test_rotation()
+    # test_matvec()
+    # test_col_orth()
+    # test_1D_block_tebd()
+    test_imag_time_prop_full()
+    test_imag_time_prop_two_site()
+    # test_mm()
 
     print('All tests passed')

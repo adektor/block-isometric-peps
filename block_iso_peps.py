@@ -53,13 +53,31 @@ class b_iso_peps:
         return copy.deepcopy(self) 
     
     def contract(self):
-        assert self.Lx == 1 and self.Ly == 3, "PEPS dimensions not supported for contraction"
-        v = ncon(self.peps[0], ((-12, -5, 1, -6, -1, -4),
-                                (1, -7, 2, -8, -2, -13), 
-                                (2, -9, -10, -11, -3, -14)))
+        """ Contracts PEPS into full tensor.
+            Warning: Only use for small PEPS.
+        """
+
+        if self.Lx == 1 and self.Ly == 3:
+            v = ncon(self.peps[0], ((-12, -5, 1, -6, -1, -4),
+                                    (1, -7, 2, -8, -2, -13), 
+                                    (2, -9, -10, -11, -3, -14)))
+        elif self.Lx == 3 and self.Ly == 3:
+            peps_flat = [item for sublist in self.peps for item in sublist]
+            v = ncon(peps_flat,((-11, 1, 2, -12, -1, -10),
+                                (2, 6, 7, -16, -2, -25), 
+                                (7, 11, -18, -19, -3, -28),
+                                (-13, 3, 4, 1, -4, -23), 
+                                (4, 8, 9, 6, -5, -26), 
+                                (9, 12, -20, 11, -6, -29), 
+                                (-14, -15, 5, 3, -7, -24), 
+                                (5, -17, 10, 8, -8, -27), 
+                                (10, -21, -22, 12, -9, -30)))
+        else:
+            v = 0
+            print("PEPS dimensions not supported for contraction")
         return np.squeeze(v)
 
-    def orth_block(self):
+    def orth_block(self): 
         """ Gram-Schmidt on block core. Assumes block is upper left (0,0) site """
         c = self.peps[0][0]
         p = c.shape[-1]
@@ -106,20 +124,25 @@ class b_iso_peps:
         info = self._sweep_and_rotate_4x([Us[0], Us[1], Us[0], Us[1]],
                                           Os=[None, None, None, Os[1]])
         
-        E_curr = np.sum(info["exp_vals"][3])
+        E_curr = info["exp_vals"]
         step = 0
         dE = 100
 
-        while step < Nsteps and np.abs(dE) > min_dE:
+        while step < Nsteps:
             if step % 10 == 0:
                 print("Step {0}".format(step))
             info = self._sweep_and_rotate_4x([Us[0], Us[1], Us[0], Us[1]],
                                              Os = [None, None, Os[0], Os[1]])
+            
             E_prev = E_curr
-            E_curr = np.sum(info["exp_vals"][3])
-            dE = E_curr - E_prev
+            E_curr = info["exp_vals"]
+            dE = E_curr - E_prev            
+
             step += 1
-        return(info)
+
+        info = self._sweep_and_rotate_4x([None] * 4,
+                                         Os = [None, None, Os[0], Os[1]])
+        return info
     
     def _sweep_and_rotate_4x(self, Us, Os = None):
         """ Sweep over all columns performing TEBD and then rotate 4 times 
@@ -136,25 +159,29 @@ class b_iso_peps:
 
             Modifies
             --------
-            self.peps 
+            self.peps
         """
-
-        info = dict(exp_vals = [],
-                    tebd_err = [0.0] * 4,
-                    moses_err = [0.0] * 4
-                    )
         
         if Us is None:
             Us = [None] * 4
         if Os is None:
             Os = [None] * 4
 
+        p = self.peps[0][0].shape[-1]
+        info = dict(exp_vals = np.zeros(p,),
+            tebd_err = [0.0] * 4,
+            moses_err = [0.0] * 4
+            )
+
         for i in range(4):
+            self.orth_block()
             # print("Starting sequence {i} of full sweep".format(i=i))
             info_ = self._sweep_over_cols(Us[i], Os[i])
-            info["exp_vals"].append(info_["exp_vals"])
+
             info["tebd_err"][i] += np.sum(info_["tebd_err"])
-            info["moses_err"][i] += np.sum(info_["tebd_err"])
+            info["moses_err"][i] += np.sum(info_["mm_err"])
+            if i > 1:
+                info["exp_vals"] += info_["exp_vals"]
 
             self._rotate()
         return info
@@ -188,9 +215,12 @@ class b_iso_peps:
 
         Lx, Ly = self.Lx, self.Ly
 
+        p = self.peps[0][0].shape[-1]
+        exp_vals = np.zeros(p,)
+
         for j in range(Lx):
             self.peps[j], tebd_info = tebd(self.peps[j], U, O, self.tp["tebd_params"])
-            info["exp_vals"].append(tebd_info["exp_vals"])
+            exp_vals += tebd_info["exp_vals"]
             info["tebd_err"].append(tebd_info["tebd_err"])
 
             if j < Lx - 1:
@@ -198,9 +228,13 @@ class b_iso_peps:
                 info["mm_err"].append(mm_err)
                 self.peps[j] = Q
                 self.peps[j+1] = pass_R(R, self.peps[j+1])
-                # need to insert a truncation here...
+
+                # may need to insert a truncation here...
             else:
                 self.peps[j] = orthogonalize(self.peps[j])
+
+        info["exp_vals"] = exp_vals
+
         return info
     
 
@@ -261,19 +295,15 @@ def disentangle(matrix, nsl, nsr, nb, nc, dis_options):
     else:
         raise NotImplementedError("Disentangling method not implemented")
 
-def b_mm(X, dis_options=None, rmaxH=np.inf, rmaxVQ=np.inf, rmaxVR=np.inf):
+def b_mm(X, mm_params):
     """
     Sequential Moses move for block PEPS.
 
     Arguments
     ---------
         X: PEPS column
-        dis_options (dict, optional): Options for disentanglers.
-
-        THESE SHOULD GO BE IN A DICT TOO...
-        rmaxH (int, optional): Max tensor core rank for H.
-        rmaxVQ (int, optional): Max tensor core rank for VQ.
-        rmaxVR (int, optional): Max tensor core rank for VR.
+        "mm_params": {"chiV_max": chi, "chiH_max": chi, "etaV_max": chi, "etaH_max": chi, 
+                      "disentangle": False}}
 
     Returns
     -------
@@ -283,8 +313,10 @@ def b_mm(X, dis_options=None, rmaxH=np.inf, rmaxVQ=np.inf, rmaxVR=np.inf):
             (does NOT directly indicate the global PEPS error of mm)
     """
 
-    if dis_options is None:
-        dis_options = {"type": "none"}
+    # if mm_params["disentangle"] is None:
+    dis_options = {"type": "none"} # no disentangler for now...
+
+    chiV_max, chiH_max, etaV_max, etaH_max = mm_params["chiV_max"], mm_params["chiH_max"], mm_params["etaV_max"], mm_params["etaH_max"]
 
     k = len(X)
     Q = [None] * k
@@ -297,7 +329,7 @@ def b_mm(X, dis_options=None, rmaxH=np.inf, rmaxVQ=np.inf, rmaxVR=np.inf):
     C = X[-1].reshape((*sz[:3], 1, *sz[3:]))
 
     # Sweep upwards
-    for i in range(k-1, -1, -1): # might need to end at 0
+    for i in range(k-1, -1, -1):
         sz = C.shape
         na, nb, nc = np.prod(sz[3:6]), np.prod(sz[1:3]), sz[0] * sz[6]
         C = np.transpose(C, (3, 4, 5, 1, 2, 0, 6))
@@ -307,10 +339,17 @@ def b_mm(X, dis_options=None, rmaxH=np.inf, rmaxVQ=np.inf, rmaxVR=np.inf):
         # Truncation
         ns = len(S)
         if i == 0:
-            ns2 = min(ns, rmaxH)
+            ns2 = min(ns, chiH_max)
         else:
-            nsl = min(max(int(np.sqrt(ns)), 1), rmaxVQ)
-            nsr = min(max(int(np.sqrt(ns)), 1), rmaxH)
+            if ns == 2:
+                nsl, nsr = 2, 1
+            elif ns == 8:
+                nsl, nsr = 4, 2
+            elif ns == 32:
+                nsl, nsr = 8, 4
+            else:
+                nsl = min(max(int(np.sqrt(ns)), 1), etaV_max)
+                nsr = min(max(int(np.sqrt(ns)), 1), chiH_max)
             ns2 = nsl * nsr
 
         Ut, St, Vt = U[:, :ns2], np.diag(S[:ns2]), Vh[:ns2, :]
@@ -340,7 +379,7 @@ def b_mm(X, dis_options=None, rmaxH=np.inf, rmaxVQ=np.inf, rmaxVR=np.inf):
             ThetaMatrix = ThetaTensor.reshape(nsl * nc, nsr * nb)
             UT, ST, VT = np.linalg.svd(ThetaMatrix, full_matrices=False)
             diagST = ST.copy()
-            nt = min(len(ST), rmaxVR)
+            nt = min(len(ST), etaH_max)
 
             PsiMatrix = UT[:, :nt] @ np.diag(ST[:nt]) / np.linalg.norm(ST[:nt])
             PsiTensor = PsiMatrix.reshape(nsl, sz[0], sz[6], nt)

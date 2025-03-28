@@ -98,23 +98,3 @@ def full_TFI_matrix_2D(Lx, Ly, J = 1.0, g = 3.5):
     for site in range(N):
         H -= g * local_operator(sx, site)
     return H
-
-def ising_eigs(Lx, Ly, J, g, p):
-    """
-    Computes p algebraically smallest eigenvalues of a sparse matrix H.
-
-    Arguments
-    ---------
-    Lx: number of sites in the horizontal direction 
-    Ly: number of sites in the vertical direction
-    J: coupling strength
-    g: transverse field strength 
-
-    Returns
-    -------
-      eigenvalues: array containing the algebraically smallest eigenvalues
-    """
-    H = full_TFI_matrix_2D(Lx, Ly, J, g)
-    eigenvalues, _ = eigsh(H, k=p, which='SA')
-
-    return eigenvalues
