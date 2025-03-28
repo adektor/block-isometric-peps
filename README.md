@@ -1,9 +1,6 @@
 # Block Isometric PEPS
 
-Compute excited states of locally interacting Hamiltonians with isometric tensor networks.
-
-## Features
-- Supports models like the 2D transverse field Ising model.
+Compute excited states of locally interacting Hamiltonians (e.g. 2D Transverse Ising Model) with isometric tensor networks.
 
 ## Installation
 Ensure you have Python installed along with the necessary dependencies. 
