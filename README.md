@@ -4,7 +4,6 @@ Compute excited states of locally interacting Hamiltonians (e.g. 2D Transverse I
 
 ## Installation
 Ensure you have Python installed along with the necessary dependencies. 
-NEED TO MAKE requirements.txt
 ```bash
 pip install -r requirements.txt
 ```
@@ -18,7 +17,7 @@ To verify that everything is working correctly, run:
 python unit_tests.py
 ```
 
-### Compute Excited States for the 2D Transverse Field Ising Model
+### Compute Eigenpairs of the 2D Transverse Field Ising Hamiltonian
 Run the following script:
 
 ```bash
