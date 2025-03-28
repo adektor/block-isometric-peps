@@ -121,27 +121,24 @@ class b_iso_peps:
         if Nsteps is None:
             Nsteps = float("inf")
 
-        info = self._sweep_and_rotate_4x([Us[0], Us[1], Us[0], Us[1]],
-                                          Os=[None, None, None, Os[1]])
-        
-        E_curr = info["exp_vals"]
-        step = 0
-        dE = 100
+        p = self.peps[0][0].shape[-1]
+        info = dict(exp_vals = np.zeros((p, Nsteps+1)))
 
+        step = 0
         while step < Nsteps:
-            if step % 10 == 0:
+            if step % 50 == 0:
                 print("Step {0}".format(step))
-            info = self._sweep_and_rotate_4x([Us[0], Us[1], Us[0], Us[1]],
+            _ = self._sweep_and_rotate_4x([Us[0], Us[1], Us[0], Us[1]],
                                              Os = [None, None, Os[0], Os[1]])
             
-            E_prev = E_curr
-            E_curr = info["exp_vals"]
-            dE = E_curr - E_prev            
-
             step += 1
 
-        info = self._sweep_and_rotate_4x([None] * 4,
-                                         Os = [None, None, Os[0], Os[1]])
+            # compute expectation values at every iteration (slow)
+            info_ = self._sweep_and_rotate_4x([None] * 4,
+                                            Os = [None, None, Os[0], Os[1]])
+            
+            info["exp_vals"][:,step] = info_["exp_vals"]
+
         return info
     
     def _sweep_and_rotate_4x(self, Us, Os = None):
@@ -417,6 +414,6 @@ def pass_R(R, X):
         shpX = X[i].shape
         shpR = R[i].shape
         RX.append(ncon([R[i], X[i]], ((-1, 1, -4, -6, -8), (-2, -3, -5, 1, -7, -9))))
-        RX[i] = np.reshape(RX[i], (shpR[0]*shpX[0], shpX[1], shpR[2]*shpX[2], shpR[3], shpX[4], shpR[4]))
+        RX[i] = np.reshape(RX[i], (shpR[0]*shpX[0], shpX[1], shpR[2]*shpX[2], shpR[3], shpX[4], shpR[4]*shpX[5]))
 
     return RX
