@@ -6,15 +6,15 @@ from utilities import *
 # from misc import *
 # from tebd import tebd, get_time_evol
 
-""" 
+"""
 AD March 2025. Block isometric tensor networks states in 2D (PEPS).
-PEPS core convention: 
-         0                      
-         |                         
+PEPS tensor index convention:
+         0  5                    
+         | /                        
      3---T---1
         /|                          
        4 2    
-for orthogonality center, dimension 5 indexes vectors in block. 
+index 4 is physical dimension, index 5 corresponds is block. 
 The PEPS is stored as a list of lists of these tensors. 
 PEPS[i] returns tensor cores in the ith column. 
 
@@ -106,14 +106,14 @@ class b_iso_peps:
         info = self._sweep_and_rotate_4x([Us[0], Us[1], Us[0], Us[1]],
                                           Os=[None, None, None, Os[1]])
         
-        E_curr = np.sum(info["expectation_O"][3])
+        E_curr = np.sum(info["exp_vals"][3])
         step = 0
         dE = 100
 
         while step < Nsteps and np.abs(dE) > min_dE:
             if step % 10 == 0:
                 print("Step {0}".format(step))
-            info = self.sweep_and_rotate_4x([Us[0], Us[1], Us[0], Us[1]],
+            info = self._sweep_and_rotate_4x([Us[0], Us[1], Us[0], Us[1]],
                                              Os = [None, None, Os[0], Os[1]])
             E_prev = E_curr
             E_curr = np.sum(info["exp_vals"][3])
@@ -186,23 +186,21 @@ class b_iso_peps:
         if O is None:
             O = [None]
 
-        C = self.peps[0]
         Lx, Ly = self.Lx, self.Ly
 
         for j in range(Lx):
-            C, tebd_info = tebd(C, U, O, self.tp["tebd_params"])
+            self.peps[j], tebd_info = tebd(self.peps[j], U, O, self.tp["tebd_params"])
             info["exp_vals"].append(tebd_info["exp_vals"])
             info["tebd_err"].append(tebd_info["tebd_err"])
 
             if j < Lx - 1:
-                Q, R, mm_err = b_mm(C, self.tp["mm_params"])
+                Q, R, mm_err = b_mm(self.peps[j], self.tp["mm_params"])
                 info["mm_err"].append(mm_err)
                 self.peps[j] = Q
                 self.peps[j+1] = pass_R(R, self.peps[j+1])
                 # need to insert a truncation here...
             else:
-                C = orthogonalize(C)
-                self.peps[j] = C
+                self.peps[j] = orthogonalize(self.peps[j])
         return info
     
 
@@ -213,12 +211,13 @@ class b_iso_peps:
             --------
             self.peps
         """
+
         peps = self.peps
         Lx, Ly = self.Lx, self.Ly
         rpeps = [[None] * Lx for i in range(Ly)] # rotated dimensions
         for x in range(Lx):
             for y in range(Ly):
-                rpeps[y][x] = rotate_core(peps[x][Ly - 1 - y]).copy()
+                rpeps[y][x] = rotate_core(peps[Lx - x - 1][y]).copy()
 
         self.peps = rpeps
         self.Lx = Ly
@@ -381,4 +380,4 @@ def pass_R(R, X):
         RX.append(ncon([R[i], X[i]], ((-1, 1, -4, -6, -8), (-2, -3, -5, 1, -7, -9))))
         RX[i] = np.reshape(RX[i], (shpR[0]*shpX[0], shpX[1], shpR[2]*shpX[2], shpR[3], shpX[4], shpR[4]))
 
-    return RX[i]
+    return RX
