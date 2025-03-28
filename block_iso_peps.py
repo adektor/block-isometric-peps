@@ -1,0 +1,384 @@
+import numpy as np
+from ncon import ncon
+import copy
+from mps import * 
+from utilities import *
+# from misc import *
+# from tebd import tebd, get_time_evol
+
+""" 
+AD March 2025. Block isometric tensor networks states in 2D (PEPS).
+PEPS core convention: 
+         0                      
+         |                         
+     3---T---1
+        /|                          
+       4 2    
+for orthogonality center, dimension 5 indexes vectors in block. 
+The PEPS is stored as a list of lists of these tensors. 
+PEPS[i] returns tensor cores in the ith column. 
+
+This file contains the class BisoPEPS (block isometric PEPS) and some static methods for 
+manipulating BisoPEPS, e.g., b_mm (block sequential moses move).
+"""
+
+class b_iso_peps:
+    """ Block isometric PEPS.
+
+    Attributes
+    ----------
+    peps: list of lists of numpy arrays
+    Lx: horizontal length of lattice
+    Ly: vertical length of lattice
+    tp: Dictionary of truncation parameters
+              Contains subdictionary tebd_params with chi_max and svd_tol, and can optionally 
+              contain moses_move truncation_params)
+             {tebd_params: {chi_max = chi_max, svd_tol = svd_tol},
+              mm_params: {chiV_max, chiH_max, etaV_max, etaH_max}
+             }
+
+    Methods
+    -------
+    The primary method is tebd2 which performs imaginary time evolution 
+    on self.peps to find the low-lying eigenvectors of a local Hamiltonian
+    """
+
+    def __init__(self, peps, trunc_params):
+        self.peps = peps
+        self.Lx = len(peps)
+        self.Ly = len(peps[0])
+        self.tp = trunc_params
+
+    def copy(self):
+        return copy.deepcopy(self) 
+    
+    def contract(self):
+        assert self.Lx == 1 and self.Ly == 3, "PEPS dimensions not supported for contraction"
+        v = ncon(self.peps[0], ((-12, -5, 1, -6, -1, -4),
+                                (1, -7, 2, -8, -2, -13), 
+                                (2, -9, -10, -11, -3, -14)))
+        return np.squeeze(v)
+
+    def orth_block(self):
+        """ Gram-Schmidt on block core. Assumes block is upper left (0,0) site """
+        c = self.peps[0][0]
+        p = c.shape[-1]
+        for i in range(p):
+            ci = c[:,:,:,:,:,i]
+            ci = ci / np.linalg.norm(ci)
+
+            for j in range(i + 1, p):
+                cj = c[:,:,:,:,:,j]
+                cj = cj/np.linalg.norm(cj)
+                ci = ci - (np.dot(cj.flatten(), ci.flatten())) * cj
+
+            ci = ci / np.linalg.norm(ci)
+            self.peps[0][0][:,:,:,:,:,i] = ci
+        return
+
+    def tebd2(self, Os, Us, Nsteps = None, min_dE = None):
+        """ Time evolving block decimation on isometric PEPS (TEBD^2)
+            Applies time evolution gates to rows and columns of PEPS 
+            while periodically orthogonalizing the block core. 
+
+            Arguments
+            ---------
+            Os: list containing lists of vertical and horizontal 2-site Hamiltonians
+                for computing expectation values
+            Us: list containing lists of vertical and horizontal 2-site time evolution operators
+            Nsteps: number of time steps
+            min_dE: break after the change in energy between sweeps is less than min_dE
+
+            Returns
+            -------
+            info: Dict on final run 
+
+            Modifies
+            --------
+            self.peps
+        """
+
+        if min_dE is None:
+            min_dE = float("inf")
+        if Nsteps is None:
+            Nsteps = float("inf")
+
+        info = self._sweep_and_rotate_4x([Us[0], Us[1], Us[0], Us[1]],
+                                          Os=[None, None, None, Os[1]])
+        
+        E_curr = np.sum(info["expectation_O"][3])
+        step = 0
+        dE = 100
+
+        while step < Nsteps and np.abs(dE) > min_dE:
+            if step % 10 == 0:
+                print("Step {0}".format(step))
+            info = self.sweep_and_rotate_4x([Us[0], Us[1], Us[0], Us[1]],
+                                             Os = [None, None, Os[0], Os[1]])
+            E_prev = E_curr
+            E_curr = np.sum(info["exp_vals"][3])
+            dE = E_curr - E_prev
+            step += 1
+        return(info)
+    
+    def _sweep_and_rotate_4x(self, Us, Os = None):
+        """ Sweep over all columns performing TEBD and then rotate 4 times 
+            to perform TEBD on all columns and rows twice.
+        
+            Arguments
+            ---------
+            Us: List of 4 (one for each sweep) lists of Trotter gates
+            Os: List of 4 (one for each sweep) lists of 2-site Hamiltonian terms
+            
+            Returns
+            -------
+            info: Dictionary of information about the peps.
+
+            Modifies
+            --------
+            self.peps 
+        """
+
+        info = dict(exp_vals = [],
+                    tebd_err = [0.0] * 4,
+                    moses_err = [0.0] * 4
+                    )
+        
+        if Us is None:
+            Us = [None] * 4
+        if Os is None:
+            Os = [None] * 4
+
+        for i in range(4):
+            # print("Starting sequence {i} of full sweep".format(i=i))
+            info_ = self._sweep_over_cols(Us[i], Os[i])
+            info["exp_vals"].append(info_["exp_vals"])
+            info["tebd_err"][i] += np.sum(info_["tebd_err"])
+            info["moses_err"][i] += np.sum(info_["tebd_err"])
+
+            self._rotate()
+        return info
+
+    def _sweep_over_cols(self, U, O = None):
+        ''' Perform TEBD on each column of self.peps
+
+            Arguments
+            ---------
+            U: Lists of 2-site Trotter gates
+            O: Lists of 2-site Hamiltonian terms
+
+            Returns
+            -------
+            info: dict
+
+            Modifies
+            --------
+            self.peps
+        '''
+
+        info = dict(exp_vals = [],
+                    tebd_err = [],
+                    mm_err = [],
+                    nrm = 1.0)
+        
+        if U is None:
+            U = [None]
+        if O is None:
+            O = [None]
+
+        C = self.peps[0]
+        Lx, Ly = self.Lx, self.Ly
+
+        for j in range(Lx):
+            C, tebd_info = tebd(C, U, O, self.tp["tebd_params"])
+            info["exp_vals"].append(tebd_info["exp_vals"])
+            info["tebd_err"].append(tebd_info["tebd_err"])
+
+            if j < Lx - 1:
+                Q, R, mm_err = b_mm(C, self.tp["mm_params"])
+                info["mm_err"].append(mm_err)
+                self.peps[j] = Q
+                self.peps[j+1] = pass_R(R, self.peps[j+1])
+                # need to insert a truncation here...
+            else:
+                C = orthogonalize(C)
+                self.peps[j] = C
+        return info
+    
+
+    def _rotate(self):
+        """ Rotate self.peps counter-clockwise by 90 degrees
+
+            Modifies
+            --------
+            self.peps
+        """
+        peps = self.peps
+        Lx, Ly = self.Lx, self.Ly
+        rpeps = [[None] * Lx for i in range(Ly)] # rotated dimensions
+        for x in range(Lx):
+            for y in range(Ly):
+                rpeps[y][x] = rotate_core(peps[x][Ly - 1 - y]).copy()
+
+        self.peps = rpeps
+        self.Lx = Ly
+        self.Ly = Lx
+
+    
+    def print(self):
+        # TODO: print for general Lx, Ly
+        # for i in range(self.Ly):
+        #     for j in range(self.Lx):
+        #         print(f"\t[-----]  {self.peps[0][0].shape[1]} ")
+        #         print("\t|     |------ ")
+        #         print("\t[-----]     ")
+        #         print("\t   |        ")
+        #         print(f"\t   | {self.peps[0][2].shape[4]} ")
+        #         print("\t   |       ")
+
+        if self.Ly == 3 and self.Lx == 3:
+            # DOUBLE CHECK BOND DIMENSIONS ARE CORRECT
+            print(f"\t[-----]  {self.peps[0][0].shape[1]}   [-----]  {self.peps[1][0].shape[1]}   [-----]")
+            print("\t|     |------|     |------|     | ")
+            print("\t[-----]      [-----]      [-----] ")
+            print("\t   |            |            | ")
+            print(f"\t   | {self.peps[0][1].shape[0]}          | {self.peps[1][1].shape[0]}          | {self.peps[2][1].shape[0]}")
+            print("\t   |            |            |  ")
+            print(f"\t[-----]  {self.peps[0][1].shape[1]}   [-----]  {self.peps[0][1].shape[1]}   [-----]")
+            print("\t|     |------|     |------|     | ")
+            print("\t[-----]      [-----]      [-----] ")
+            print("\t   |            |            |        ")
+            print(f"\t   | {self.peps[0][2].shape[0]}          | {self.peps[1][2].shape[0]}          | {self.peps[2][2].shape[0]}")
+            print("\t   |            |            |        ")
+            print(f"\t[-----]  {self.peps[0][2].shape[1]}   [-----]  {self.peps[1][2].shape[1]}   [-----]   ")
+            print("\t|     |------|     |------|     | ")
+            print("\t[-----]      [-----]      [-----] ")
+
+
+def disentangle(matrix, nsl, nsr, nb, nc, dis_options):
+    """ Placeholder function for disentangling. Implement as needed. """
+    if dis_options.get("type", "none") == "none":
+        return np.eye(nsl * nsr)  # Identity if no disentangling is applied
+    else:
+        raise NotImplementedError("Disentangling method not implemented")
+
+def b_mm(X, dis_options=None, rmaxH=np.inf, rmaxVQ=np.inf, rmaxVR=np.inf):
+    """
+    Sequential Moses move for block PEPS.
+
+    Arguments
+    ---------
+        X: PEPS column
+        dis_options (dict, optional): Options for disentanglers.
+
+        THESE SHOULD GO BE IN A DICT TOO...
+        rmaxH (int, optional): Max tensor core rank for H.
+        rmaxVQ (int, optional): Max tensor core rank for VQ.
+        rmaxVR (int, optional): Max tensor core rank for VR.
+
+    Returns
+    -------
+        Q: PEPS column of isometric tensor cores.
+        R: PEPS column with no physical indices
+        err: accumulated truncation error from all SVDs 
+            (does NOT directly indicate the global PEPS error of mm)
+    """
+
+    if dis_options is None:
+        dis_options = {"type": "none"}
+
+    k = len(X)
+    Q = [None] * k
+    R = [None] * k
+    e1 = np.zeros(k)
+    e2 = np.zeros(k)
+
+    # Initialize 6-tensor with bottom core
+    sz = X[-1].shape
+    C = X[-1].reshape((*sz[:3], 1, *sz[3:]))
+
+    # Sweep upwards
+    for i in range(k-1, -1, -1): # might need to end at 0
+        sz = C.shape
+        na, nb, nc = np.prod(sz[3:6]), np.prod(sz[1:3]), sz[0] * sz[6]
+        C = np.transpose(C, (3, 4, 5, 1, 2, 0, 6))
+        U, S, Vh = np.linalg.svd(C.reshape(na, nb * nc), full_matrices=False)
+        diagS = S.copy()
+
+        # Truncation
+        ns = len(S)
+        if i == 0:
+            ns2 = min(ns, rmaxH)
+        else:
+            nsl = min(max(int(np.sqrt(ns)), 1), rmaxVQ)
+            nsr = min(max(int(np.sqrt(ns)), 1), rmaxH)
+            ns2 = nsl * nsr
+
+        Ut, St, Vt = U[:, :ns2], np.diag(S[:ns2]), Vh[:ns2, :]
+        Theta = St @ Vt
+        e1[i] = np.sum(diagS[ns2:] ** 2)
+
+        # Update Q
+        if i == 0:
+            Q[i] = Ut.reshape((*sz[3:6], 1, ns2))
+        else:
+            Q[i] = Ut.reshape((*sz[3:6], nsl, nsr))
+        Q[i] = np.transpose(Q[i], (3, 4, 0, 1, 2))
+
+        # Second SVD
+        if i > 0:
+            ThetaTensor = Theta.reshape(nsl, nsr, nb, nc)
+
+            # disentangler
+            ThetaMatrix1 = ThetaTensor.reshape(nsl * nsr, nb * nc)
+            D = disentangle(ThetaMatrix1, nsl, nsr, nb, nc, dis_options)
+            ThetaMatrix1 = D @ ThetaMatrix1
+            Dadj = D.T.reshape(nsl, nsr, nsl, nsr)
+            Q[i] = ncon([Q[i], Dadj], ((1, 2, -3, -4, -5), (1, 2, -1, -2)))
+
+            ThetaTensor = ThetaMatrix1.reshape(nsl, nsr, nb, nc)
+            ThetaTensor = np.transpose(ThetaTensor, (0, 3, 1, 2))
+            ThetaMatrix = ThetaTensor.reshape(nsl * nc, nsr * nb)
+            UT, ST, VT = np.linalg.svd(ThetaMatrix, full_matrices=False)
+            diagST = ST.copy()
+            nt = min(len(ST), rmaxVR)
+
+            PsiMatrix = UT[:, :nt] @ np.diag(ST[:nt]) / np.linalg.norm(ST[:nt])
+            PsiTensor = PsiMatrix.reshape(nsl, sz[0], sz[6], nt)
+            e2[i] = np.sum(diagST[nt:] ** 2)
+
+            # Contract with upper core
+            C = ncon([X[i - 1], PsiTensor], ((-1, -2, 1, -5, -6, -8), (-4, 1, -7, -3)))
+            C = np.squeeze(C,axis=-1)
+            R[i] = VT[:nt, :].reshape(nt, nsr, sz[1], sz[2])
+            R[i] = np.transpose(R[i], (0, 2, 3, 1))
+            R[i] = np.expand_dims(R[i], axis=-1)
+        elif i == 0:
+            R[i] = Theta.reshape(1, ns2, sz[1], sz[2], sz[6])
+            R[i] = np.transpose(R[i], (0, 2, 3, 1, 4))
+
+        Q[i] = np.expand_dims(Q[i], axis=-1)
+
+    err = np.sum(e1) + np.sum(e2)
+    return Q, R, err
+
+def pass_R(R, X):
+    """ Pass R from mm to right column
+    Arguments
+    ---------
+    R: PEPS column with no physical dimension
+    X: PEPS column
+
+    Returns
+    -------
+    RX: PEPS column
+    """
+    L = len(X)
+    RX = []
+    for i in range(L):
+        shpX = X[i].shape
+        shpR = R[i].shape
+        RX.append(ncon([R[i], X[i]], ((-1, 1, -4, -6, -8), (-2, -3, -5, 1, -7, -9))))
+        RX[i] = np.reshape(RX[i], (shpR[0]*shpX[0], shpX[1], shpR[2]*shpX[2], shpR[3], shpX[4], shpR[4]))
+
+    return RX[i]
