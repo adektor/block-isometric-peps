@@ -165,7 +165,7 @@ def test_1D_block_tebd(plot_error=False):
         peps._rotate()
 
         # top core contains block
-        peps.orth_block()
+        peps.peps[0][0] = orth_block(peps.peps[0][0])
 
         _, info = tebd(peps.copy().peps[0], [None], O, tebd_params)
         exp_val.append(np.sort(info["exp_vals"]))
@@ -294,12 +294,13 @@ def test_imag_time_prop_two_site():
 
 if __name__ == '__main__':
     print(' \n Running unit tests \n' + "-" * 20)
-    # test_rotation()
-    # test_matvec()
-    # test_col_orth()
-    # test_1D_block_tebd()
+    
+    test_rotation()
+    test_matvec()
+    test_col_orth()
+    test_1D_block_tebd()
     test_imag_time_prop_full()
     test_imag_time_prop_two_site()
-    # test_mm()
+    test_mm()
 
     print('All tests passed')

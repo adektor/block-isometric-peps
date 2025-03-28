@@ -35,6 +35,7 @@ def tebd(C, U, O, tebd_params):
     L = len(C)         # column length
     c = C[0]           # orthogonality center
 
+    C[0] = orth_block(C[0])
     exp_vals = np.zeros((p,))
     tebd_err = 0.0
     for j in range(L-1):
@@ -73,7 +74,7 @@ def tebd(C, U, O, tebd_params):
     
     return C, info
 
-def orthogonalize(C):
+def orthogonalize(C, chi = 1000):
     """ Orthogonalize a PEPS column from bottom-to-top 
 
         Arguments
@@ -90,10 +91,28 @@ def orthogonalize(C):
     for i in range(L-1, 0, -1):
         c = C[i]
         shp = c.shape
-        c = np.reshape(c, (shp[0], np.prod(shp[1:])))
-        u, s, v, err = truncated_svd(c, 1000)
+        c = np.transpose(c, (0, 5, 1, 2, 3, 4))
+        c = np.reshape(c, (shp[0]*shp[5], np.prod(shp[1:5])))
+        u, s, v, err = truncated_svd(c, chi)
         us = u@s
-        C[i] = np.reshape(v, shp)
-        C[i-1] = ncon([us, C[i-1]], ((1, -3), (-1, -2, 1, -4, -5, -6)))
-    
+        C[i] = np.reshape(v, (v.shape[0], *shp[1:5], 1))
+        us = np.reshape(us, (shp[0], shp[5], u.shape[1]))
+        C[i-1] = ncon([us, C[i-1]], ((1, -6, -3), (-1, -2, 1, -4, -5, -7)))
+        C[i-1] = np.squeeze(C[i-1], axis=-1)
     return C
+
+def orth_block(c): 
+    """ Gram-Schmidt on block core. Assumes block is upper left (0,0) site """
+    p = c.shape[-1]
+    for i in range(p):
+        ci = c[:,:,:,:,:,i]
+        ci = ci / np.linalg.norm(ci)
+
+        for j in range(i + 1, p):
+            cj = c[:,:,:,:,:,j]
+            cj = cj/np.linalg.norm(cj)
+            ci = ci - (np.dot(cj.flatten(), ci.flatten())) * cj
+
+        ci = ci / np.linalg.norm(ci)
+        c[:,:,:,:,:,i] = ci
+    return c

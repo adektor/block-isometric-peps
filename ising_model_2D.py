@@ -1,8 +1,8 @@
 from block_iso_peps import *
 import scipy.linalg as la
 import matplotlib.pyplot as plt
-import pickle
-import pdb
+# import pickle
+# import pdb
 
 """
     This file is for performing imaginary TEBD 
@@ -138,9 +138,9 @@ def iso_tebd_ising_2D(L, J, g, p, dts, Nt, t_params):
     return peps, exp_vals
 
 if __name__ == '__main__':
-    L, Nt = 3, 200
+    L, Nt = 3, 500
     J, g = 1, 3.5
-    p = 2
+    p = 3
     dts = [0.01, 0.001]
     chi = 32
     t_params = {"tebd_params": {"chi_max": chi, "svd_tol": 0}, 
@@ -153,14 +153,18 @@ if __name__ == '__main__':
     
     H = full_TFI_matrix_2D(L, L, J, g)
     E_ref, _ = eigsh(H, k=p, which='SA')
+    E_ref = np.expand_dims(E_ref, axis=1)
 
-    v = peps.contract()
-    print('norm of my vector is {0}'.format(np.linalg.norm(v)))
-    print('exp val from full is {0}'.format(-np.linalg.norm(H@v.flatten())))
+    # v = peps.contract()
+    # v1, v2 = v[:,:,:,:,:,:,:,:,:,0], v[:,:,:,:,:,:,:,:,:,1]
+
+    # print('norm of my 1st vector is {0}'.format(np.linalg.norm(v1)))
+    # print('norm of my 2nd vector is {0}'.format(np.linalg.norm(v2)))
+    # print('exp val from full is {0}'.format(-np.linalg.norm(H@v2.flatten())))
 
     print(f"ref  eig 0: {E_ref[0]}")
     print(f"peps eig 0: {E[-1]} \n")
-
+    exp_vals = np.sort(exp_vals, axis=0)
     en_den_err = (exp_vals - E_ref)/(L**2)
     for i in range(en_den_err.shape[0]):
         plt.semilogy(en_den_err[i,:], label="eigenvalue {0}".format(i))
@@ -168,9 +172,3 @@ if __name__ == '__main__':
     plt.ylabel("energy density error")      
     plt.legend()
     plt.show()
-
-    # pdb.set_trace()
-    # E = np.sum(info['expectation_O'][2]) + np.sum(info['expectation_O'][3])
-    # E_ref = -32.402186096095363
-    # E_ref = -130.6117109104326
-    # print("Energy density error {0}".format((E-E_ref)/(L**2)))

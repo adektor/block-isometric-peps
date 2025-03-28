@@ -77,23 +77,6 @@ class b_iso_peps:
             print("PEPS dimensions not supported for contraction")
         return np.squeeze(v)
 
-    def orth_block(self): 
-        """ Gram-Schmidt on block core. Assumes block is upper left (0,0) site """
-        c = self.peps[0][0]
-        p = c.shape[-1]
-        for i in range(p):
-            ci = c[:,:,:,:,:,i]
-            ci = ci / np.linalg.norm(ci)
-
-            for j in range(i + 1, p):
-                cj = c[:,:,:,:,:,j]
-                cj = cj/np.linalg.norm(cj)
-                ci = ci - (np.dot(cj.flatten(), ci.flatten())) * cj
-
-            ci = ci / np.linalg.norm(ci)
-            self.peps[0][0][:,:,:,:,:,i] = ci
-        return
-
     def tebd2(self, Os, Us, Nsteps = None, min_dE = None):
         """ Time evolving block decimation on isometric PEPS (TEBD^2)
             Applies time evolution gates to rows and columns of PEPS 
@@ -171,7 +154,7 @@ class b_iso_peps:
             )
 
         for i in range(4):
-            self.orth_block()
+            # self.orth_block()
             # print("Starting sequence {i} of full sweep".format(i=i))
             info_ = self._sweep_over_cols(Us[i], Os[i])
 
