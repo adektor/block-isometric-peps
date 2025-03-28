@@ -17,7 +17,7 @@ To verify that everything is working correctly, run:
 python unit_tests.py
 ```
 
-### Compute Excited States for the 2D Transverse Field Ising Model
+### Compute Eigenpairs of the 2D Transverse Field Ising Hamiltonian
 Run the following script:
 
 ```bash
