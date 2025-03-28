@@ -6,7 +6,7 @@ from ising_model_2D import *
 from utilities import *
 
 """
-Unit tests for block isometric tns.
+Unit tests for block isometric PEPS.
 Run this file to ensure that all tests pass. 
 """
 
@@ -294,7 +294,7 @@ def test_imag_time_prop_two_site():
 
 if __name__ == '__main__':
     print(' \n Running unit tests \n' + "-" * 20)
-    
+
     test_rotation()
     test_matvec()
     test_col_orth()
