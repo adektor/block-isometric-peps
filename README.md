@@ -4,7 +4,6 @@ Compute excited states of locally interacting Hamiltonians (e.g. 2D Transverse I
 
 ## Installation
 Ensure you have Python installed along with the necessary dependencies. 
-NEED TO MAKE requirements.txt
 ```bash
 pip install -r requirements.txt
 ```
