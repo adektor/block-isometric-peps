@@ -24,5 +24,3 @@ Run the following script:
 python ising_model_2D.py
 ```
 
-## Acknowledgments
-Inspired by the 2D isometric PEPS repository https://github.com/rdilip/isotns
