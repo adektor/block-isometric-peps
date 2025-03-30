@@ -125,11 +125,11 @@ def iso_tebd_ising_2D(L, J, g, p, dts, Nt, t_params):
     return peps, info
 
 if __name__ == '__main__':
-    L, Nt = 3, 250
+    L, Nt = 6, 50
     J, g = 1, 3.5
     p = 1
-    dts = [0.01, 0.001]
-    chi = 2
+    dts = [0.01]
+    chi = 3
     t_params = {"tebd_params": {"chi_max": chi, "svd_tol": 0}, 
                 "mm_params": {"chiV_max": chi, "chiH_max": chi, "etaV_max": chi, "etaH_max": chi, "disentangle": False}}
     
@@ -137,39 +137,34 @@ if __name__ == '__main__':
     peps.print()
 
     E = np.sort(info["exp_vals"][:,-1])
+    print(E)
     
-    H = full_TFI_matrix_2D(L, L, J, g)
-    E_ref, _ = eigsh(H, k=p, which='SA')
-    E_ref = np.expand_dims(E_ref, axis=1)
+    # H = full_TFI_matrix_2D(L, L, J, g)
+    # E_ref, _ = eigsh(H, k=p, which='SA')
+    # E_ref = np.expand_dims(E_ref, axis=1)
 
-    # v = peps.contract()
-    # v1, v2 = v[:,:,:,:,:,:,:,:,:,0], v[:,:,:,:,:,:,:,:,:,1]
+    # # print
+    # for i in range(p):
+    #     print(f"ref. eig {i}: {E_ref[i][0]}")
+    #     print(f"peps eig {i}: {E[i]} \n")
 
-    # print('norm of my 1st vector is {0}'.format(np.linalg.norm(v1)))
-    # print('norm of my 2nd vector is {0}'.format(np.linalg.norm(v2)))
-    # print('exp val from full is {0}'.format(-np.linalg.norm(H@v2.flatten())))
+    # exp_vals = np.sort(info["exp_vals"], axis=0)
+    # en_den_err = np.abs(exp_vals - E_ref)/(L**2)
 
-    for i in range(p):
-        print(f"ref. eig {i}: {E_ref[i][0]}")
-        print(f"peps eig {i}: {E[i]} \n")
-
-    exp_vals = np.sort(info["exp_vals"], axis=0)
-    en_den_err = np.abs(exp_vals - E_ref)/(L**2)
-
-    # Plotting
-    plt.figure(1) # energy density errors
-    for i in range(en_den_err.shape[0]):
-        plt.semilogy(en_den_err[i,:], label="eigenvalue {0}".format(i))
-    plt.xlabel("iteration")  
-    plt.ylabel("energy density error")      
-    plt.legend()
+    # # plot
+    # plt.figure(1) # energy density errors
+    # for i in range(en_den_err.shape[0]):
+    #     plt.semilogy(en_den_err[i,:], label="eigenvalue {0}".format(i))
+    # plt.xlabel("iteration")  
+    # plt.ylabel("energy density error")      
+    # plt.legend()
     
 
-    plt.figure(2) # TEBD, moses move errors
-    plt.semilogy(info["tebd_err"], label="tebd")
-    plt.semilogy(info["mm_err"], label="moses move")
-    plt.xlabel("iteration")  
-    plt.ylabel("truncation error")      
-    plt.legend()
+    # plt.figure(2) # TEBD, moses move errors
+    # plt.semilogy(info["tebd_err"], label="tebd")
+    # plt.semilogy(info["mm_err"], label="moses move")
+    # plt.xlabel("iteration")  
+    # plt.ylabel("truncation error")      
+    # plt.legend()
 
-    plt.show()
+    # plt.show()

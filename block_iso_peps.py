@@ -104,7 +104,8 @@ class b_iso_peps:
 
         Us = [time_evol(Os[0], dt), time_evol(Os[1], dt)]
         Us2 = [time_evol(Os[0], dt/2), time_evol(Os[1], dt/2)]
-        Id = [np.reshape(np.eye(4), [2] * 4)] * 2
+        d, L = Os[0][0].shape[0], len(Os[0])+1
+        Id = [np.reshape(np.eye(d**2), [d] * 4)] * (L-1)
 
         if min_dE is None:
             min_dE = float("inf")
@@ -119,19 +120,19 @@ class b_iso_peps:
 
         step = 0
         while step < Nsteps:
-            if step % 50 == 0:
+            if step % 1 == 0:
                 print("iteration {0} out of {1} with max bond dim {2}".format(step, Nsteps, self.tp["tebd_params"]["chi_max"]))
+                self.print()
             info_ = self._sweep_and_rotate_4x([Us2[0], Us[1], Us2[0], Id],
                                              Os = [None, None, Os[0], Os[1]])
-            
+            info["tebd_err"][step] += info_["tebd_err"]
             step += 1
 
             # compute expectation values at every iteration (slow)
-            # info_ = self._sweep_and_rotate_4x([None] * 4,
-            #                                 Os = [None, None, Os[0], Os[1]])
+            info_ = self._sweep_and_rotate_4x([None] * 4,
+                                            Os = [None, None, Os[0], Os[1]])
             
             info["exp_vals"][:,step] += info_["exp_vals"]
-            info["tebd_err"][step] += info_["tebd_err"]
             info["mm_err"][step] += info_["mm_err"]
 
         return info
@@ -249,35 +250,46 @@ class b_iso_peps:
 
     
     def print(self):
-        # TODO: print for general Lx, Ly
-        # for i in range(self.Ly):
-        #     for j in range(self.Lx):
-        #         print(f"\t[-----]  {self.peps[0][0].shape[1]} ")
-        #         print("\t|     |------ ")
-        #         print("\t[-----]     ")
-        #         print("\t   |        ")
-        #         print(f"\t   | {self.peps[0][2].shape[4]} ")
-        #         print("\t   |       ")
+        L = self.Lx
+        print("\n")
+        for j in range(L):
+            # horizontal bond dimensions
+            print("\t" + "   ".join(f"[-----]  {self.peps[i][j].shape[1]}" for i in range(L-1)) + "   [-----]")
 
-        if self.Ly == 3 and self.Lx == 3:
-            # DOUBLE CHECK BOND DIMENSIONS ARE CORRECT
-            print("\n")
-            print(f"\t[-----]  {self.peps[0][0].shape[1]}   [-----]  {self.peps[1][0].shape[1]}   [-----]")
-            print("\t|     |------|     |------|     | ")
-            print("\t[-----]      [-----]      [-----] ")
-            print("\t   |            |            | ")
-            print(f"\t   | {self.peps[0][1].shape[0]}          | {self.peps[1][1].shape[0]}          | {self.peps[2][1].shape[0]}")
-            print("\t   |            |            |  ")
-            print(f"\t[-----]  {self.peps[0][1].shape[1]}   [-----]  {self.peps[0][1].shape[1]}   [-----]")
-            print("\t|     |------|     |------|     | ")
-            print("\t[-----]      [-----]      [-----] ")
-            print("\t   |            |            |        ")
-            print(f"\t   | {self.peps[0][2].shape[0]}          | {self.peps[1][2].shape[0]}          | {self.peps[2][2].shape[0]}")
-            print("\t   |            |            |        ")
-            print(f"\t[-----]  {self.peps[0][2].shape[1]}   [-----]  {self.peps[1][2].shape[1]}   [-----]   ")
-            print("\t|     |------|     |------|     | ")
-            print("\t[-----]      [-----]      [-----] ")
-            print("\n")
+            # Print horizontal connections
+            if j < L-1:
+                print("\t" + "|     |------" * (L-1) + "| " + "    |")
+                print("\t" + "      ".join("[-----]" for _ in range(L-1)) + "      [-----]")
+                print("\t" + "   |         " * (L-1) + "   | ")
+
+            # vertical bond dimensions
+            if j < L-1:
+                print("\t" + "   | " + "          | ".join(str(self.peps[i][j].shape[2]) for i in range(L-1)) + "          | " + str(self.peps[j][-1].shape[2]))
+                print("\t" + "   |         " * (L-1) + "   | ")
+
+        # last row
+        print("\t" + "|     |------" * (L-1) + "| " + "    |")
+        print("\t" + "      ".join("[-----]" for _ in range(L-1)) + "      [-----]")
+        print("\n")
+    
+    # 3 x 3
+        # print("\n")
+        # print(f"\t[-----]  {self.peps[0][0].shape[1]}   [-----]  {self.peps[1][0].shape[1]}   [-----]")
+        # print("\t|     |------|     |------|     | ")
+        # print("\t[-----]      [-----]      [-----] ")
+        # print("\t   |            |            | ")
+        # print(f"\t   | {self.peps[0][1].shape[0]}          | {self.peps[1][1].shape[0]}          | {self.peps[2][1].shape[0]}")
+        # print("\t   |            |            |  ")
+        # print(f"\t[-----]  {self.peps[0][1].shape[1]}   [-----]  {self.peps[1][1].shape[1]}   [-----]")
+        # print("\t|     |------|     |------|     | ")
+        # print("\t[-----]      [-----]      [-----] ")
+        # print("\t   |            |            |        ")
+        # print(f"\t   | {self.peps[0][2].shape[0]}          | {self.peps[1][2].shape[0]}          | {self.peps[2][2].shape[0]}")
+        # print("\t   |            |            |        ")
+        # print(f"\t[-----]  {self.peps[0][2].shape[1]}   [-----]  {self.peps[1][2].shape[1]}   [-----]   ")
+        # print("\t|     |------|     |------|     | ")
+        # print("\t[-----]      [-----]      [-----] ")
+        # print("\n")
 
 def disentangle(matrix, nsl, nsr, nb, nc, dis_options):
     """ Placeholder function for disentangling. Implement as needed. """
@@ -425,7 +437,7 @@ def time_evol(O, dt):
         Us: list of imaginary time evolution operators
     '''
     Us = []
-    d = O[0].shape[0] # Local Hilbert space dimension
+    d = O[0].shape[0] # local Hilbert space dimension
     for H in O:
         H = H.reshape([d*d, d*d])
         U = la.expm(-dt * H).reshape([d] * 4)
