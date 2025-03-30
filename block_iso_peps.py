@@ -1,4 +1,5 @@
 import numpy as np
+import scipy.linalg as la
 from ncon import ncon
 import copy
 from mps import * 
@@ -14,8 +15,9 @@ PEPS tensor index convention:
      3---T---1
         /|                          
        4 2    
-index 4 is physical dimension, index 5 corresponds is block. 
-The PEPS is stored as a list of lists of these tensors. 
+index 4 is physical dimension, index 5 corresponds to block. 
+The PEPS is stored as a list of lists of these tensors the block is always 
+contained in the orthogonality center. 
 PEPS[i] returns tensor cores in the ith column. 
 
 This file contains the class BisoPEPS (block isometric PEPS) and some static methods for 
@@ -61,6 +63,7 @@ class b_iso_peps:
             v = ncon(self.peps[0], ((-12, -5, 1, -6, -1, -4),
                                     (1, -7, 2, -8, -2, -13), 
                                     (2, -9, -10, -11, -3, -14)))
+        
         elif self.Lx == 3 and self.Ly == 3:
             peps_flat = [item for sublist in self.peps for item in sublist]
             v = ncon(peps_flat,((-11, 1, 2, -12, -1, -10),
@@ -77,7 +80,7 @@ class b_iso_peps:
             print("PEPS dimensions not supported for contraction")
         return np.squeeze(v)
 
-    def tebd2(self, Os, Us, Nsteps = None, min_dE = None):
+    def tebd2(self, Os, dt, Nsteps = None, min_dE = None):
         """ Time evolving block decimation on isometric PEPS (TEBD^2)
             Applies time evolution gates to rows and columns of PEPS 
             while periodically orthogonalizing the block core. 
@@ -92,12 +95,16 @@ class b_iso_peps:
 
             Returns
             -------
-            info: Dict on final run 
+            info: dict containing "exp_vals", "tebd_err", "mm_err"
 
             Modifies
             --------
             self.peps
         """
+
+        Us = [time_evol(Os[0], dt), time_evol(Os[1], dt)]
+        Us2 = [time_evol(Os[0], dt/2), time_evol(Os[1], dt/2)]
+        Id = [np.reshape(np.eye(4), [2] * 4)] * 2
 
         if min_dE is None:
             min_dE = float("inf")
@@ -105,22 +112,27 @@ class b_iso_peps:
             Nsteps = float("inf")
 
         p = self.peps[0][0].shape[-1]
-        info = dict(exp_vals = np.zeros((p, Nsteps+1)))
+
+        info = dict(exp_vals = np.zeros((p, Nsteps+1)), 
+                    tebd_err = np.zeros((Nsteps+1)), 
+                    mm_err = np.zeros((Nsteps+1)))
 
         step = 0
         while step < Nsteps:
             if step % 50 == 0:
                 print("iteration {0} out of {1} with max bond dim {2}".format(step, Nsteps, self.tp["tebd_params"]["chi_max"]))
-            _ = self._sweep_and_rotate_4x([Us[0], Us[1], Us[0], Us[1]],
+            info_ = self._sweep_and_rotate_4x([Us2[0], Us[1], Us2[0], Id],
                                              Os = [None, None, Os[0], Os[1]])
             
             step += 1
 
             # compute expectation values at every iteration (slow)
-            info_ = self._sweep_and_rotate_4x([None] * 4,
-                                            Os = [None, None, Os[0], Os[1]])
+            # info_ = self._sweep_and_rotate_4x([None] * 4,
+            #                                 Os = [None, None, Os[0], Os[1]])
             
-            info["exp_vals"][:,step] = info_["exp_vals"]
+            info["exp_vals"][:,step] += info_["exp_vals"]
+            info["tebd_err"][step] += info_["tebd_err"]
+            info["mm_err"][step] += info_["mm_err"]
 
         return info
     
@@ -149,17 +161,15 @@ class b_iso_peps:
 
         p = self.peps[0][0].shape[-1]
         info = dict(exp_vals = np.zeros(p,),
-            tebd_err = [0.0] * 4,
-            moses_err = [0.0] * 4
+            tebd_err = 0.0,
+            mm_err = 0.0
             )
 
         for i in range(4):
-            # self.orth_block()
-            # print("Starting sequence {i} of full sweep".format(i=i))
             info_ = self._sweep_over_cols(Us[i], Os[i])
 
-            info["tebd_err"][i] += np.sum(info_["tebd_err"])
-            info["moses_err"][i] += np.sum(info_["mm_err"])
+            info["tebd_err"] += np.sum(info_["tebd_err"])
+            info["mm_err"] += np.sum(info_["mm_err"])
             if i > 1:
                 info["exp_vals"] += info_["exp_vals"]
 
@@ -401,3 +411,23 @@ def pass_R(R, X):
         RX[i] = np.reshape(RX[i], (shpR[0]*shpX[0], shpX[1], shpR[2]*shpX[2], shpR[3], shpX[4], shpR[4]*shpX[5]))
 
     return RX
+
+def time_evol(O, dt):
+    ''' Construct imaginary time evolution operators (Trotter Gates) 
+        
+        Arguments
+        ---------
+        O: list of local operators
+        dt: time step-size
+
+        Returns
+        -------
+        Us: list of imaginary time evolution operators
+    '''
+    Us = []
+    d = O[0].shape[0] # Local Hilbert space dimension
+    for H in O:
+        H = H.reshape([d*d, d*d])
+        U = la.expm(-dt * H).reshape([d] * 4)
+        Us.append(U)
+    return Us

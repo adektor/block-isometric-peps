@@ -1,5 +1,4 @@
 from block_iso_peps import *
-import scipy.linalg as la
 import matplotlib.pyplot as plt
 # import pickle
 # import pdb
@@ -37,26 +36,6 @@ def TFI_bonds(L, J = 1.0, g = 3.5):
         H_local = -J * np.kron(sz, sz) - gL * np.kron(sx, id) - gR * np.kron(id, sx)
         O.append(np.reshape(H_local, [d] * 4))
     return O
-
-def time_evol(O, dt):
-    ''' Construct imaginary time evolution operators (Trotter Gates) 
-        
-        Arguments
-        ---------
-        O: list of local operators
-        dt: time step-size
-
-        Returns
-        -------
-        Us: list of imaginary time evolution operators
-    '''
-    Us = []
-    d = O[0].shape[0] # Local Hilbert space dimension
-    for H in O:
-        H = H.reshape([d*d, d*d])
-        U = la.expm(-dt * H).reshape([d] * 4)
-        Us.append(U)
-    return Us
 
 def random_col(L = 3, d = 2, p = 1, block = False):
     ''' Construct a random PEPS column
@@ -125,53 +104,72 @@ def iso_tebd_ising_2D(L, J, g, p, dts, Nt, t_params):
 
     Os = [TFI_bonds(L, J, g), TFI_bonds(L, J, 0)]                   # [vertical bonds, horizontal bonds]
     peps = b_iso_peps(random_peps(L, L, 2, p), t_params)
-    exp_vals = []
-    for dt in dts:
+
+    info = dict(exp_vals = [], 
+                    tebd_err = [],
+                    mm_err = [])
     
+    for dt in dts:
         print(("\nTEBD2 with dt = {0}\n" + "-" * 15).format(dt))
-        Us = [time_evol(Os[0], dt), time_evol(Os[1], dt)]
-        info = peps.tebd2(Os, Us, Nsteps = Nt)
-        exp_vals.append(info["exp_vals"][:,1:])
+        info_ = peps.tebd2(Os, dt, Nsteps = Nt)
         
-    exp_vals = np.hstack(exp_vals)
+        info["exp_vals"].append(info_["exp_vals"][:,1:])
+        info["tebd_err"].append(info_["tebd_err"])
+        info["mm_err"].append(info_["mm_err"])
+        
+    info["exp_vals"] = np.hstack(info["exp_vals"])
+    info["tebd_err"] = np.hstack(info["tebd_err"])
+    info["mm_err"] = np.hstack(info["mm_err"])
     print("Done")
 
-    return peps, exp_vals
+    return peps, info
 
 if __name__ == '__main__':
-    L, Nt = 3, 100
+    L, Nt = 3, 250
     J, g = 1, 3.5
-    p = 3
+    p = 2
     dts = [0.01, 0.001]
     chi = 8
     t_params = {"tebd_params": {"chi_max": chi, "svd_tol": 0}, 
                 "mm_params": {"chiV_max": chi, "chiH_max": chi, "etaV_max": chi, "etaH_max": chi, "disentangle": False}}
     
-    peps, exp_vals = iso_tebd_ising_2D(L, J, g, p, dts, Nt, t_params)
+    peps, info = iso_tebd_ising_2D(L, J, g, p, dts, Nt, t_params)
     peps.print()
 
-    E = np.sort(exp_vals[:,-1])
+    E = np.sort(info["exp_vals"][:,-1])
     
     H = full_TFI_matrix_2D(L, L, J, g)
     E_ref, _ = eigsh(H, k=p, which='SA')
     E_ref = np.expand_dims(E_ref, axis=1)
 
-    # v = peps.contract()
-    # v1, v2 = v[:,:,:,:,:,:,:,:,:,0], v[:,:,:,:,:,:,:,:,:,1]
+    v = peps.contract()
+    v1, v2 = v[:,:,:,:,:,:,:,:,:,0], v[:,:,:,:,:,:,:,:,:,1]
 
-    # print('norm of my 1st vector is {0}'.format(np.linalg.norm(v1)))
-    # print('norm of my 2nd vector is {0}'.format(np.linalg.norm(v2)))
-    # print('exp val from full is {0}'.format(-np.linalg.norm(H@v2.flatten())))
+    print('norm of my 1st vector is {0}'.format(np.linalg.norm(v1)))
+    print('norm of my 2nd vector is {0}'.format(np.linalg.norm(v2)))
+    print('exp val from full is {0}'.format(-np.linalg.norm(H@v2.flatten())))
 
     for i in range(p):
         print(f"ref. eig {i}: {E_ref[i][0]}")
         print(f"peps eig {i}: {E[i]} \n")
 
-    exp_vals = np.sort(exp_vals, axis=0)
-    en_den_err = (exp_vals - E_ref)/(L**2)
+    exp_vals = np.sort(info["exp_vals"], axis=0)
+    en_den_err = np.abs(exp_vals - E_ref)/(L**2)
+
+    # Plotting
+    plt.figure(1) # energy density errors
     for i in range(en_den_err.shape[0]):
         plt.semilogy(en_den_err[i,:], label="eigenvalue {0}".format(i))
     plt.xlabel("iteration")  
     plt.ylabel("energy density error")      
     plt.legend()
+    
+
+    plt.figure(2) # TEBD, moses move errors
+    plt.semilogy(info["tebd_err"], label="tebd")
+    plt.semilogy(info["mm_err"], label="moses move")
+    plt.xlabel("iteration")  
+    plt.ylabel("truncation error")      
+    plt.legend()
+
     plt.show()

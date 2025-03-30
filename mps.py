@@ -49,6 +49,7 @@ def tebd(C, U, O, tebd_params):
 
         # expectation values
         if O != [None]:
+            theta = orth_block(theta)
             e = ncon([theta, O[j], theta], ((3, 4, 5, 1, 6, 8, 7, 2, -1, 11), (1, 2, 9, 10), (3, 4, 5, 9, 6, 8, 7, 10, -2, 11)))
             exp_vals += np.diag(e)
 
@@ -102,17 +103,35 @@ def orthogonalize(C, chi = 1000):
     return C
 
 def orth_block(c): 
-    """ Gram-Schmidt on block core. Assumes block is upper left (0,0) site """
-    p = c.shape[-1]
-    for i in range(p):
-        ci = c[:,:,:,:,:,i]
-        ci = ci / np.linalg.norm(ci)
+    """ Gram-Schmidt on block core. """
+    if np.ndim(c) == 6:
+        p = c.shape[-1]
+        for i in range(p):
+            ci = c[:,:,:,:,:,i]
+            ci = ci / np.linalg.norm(ci)
 
-        for j in range(i + 1, p):
-            cj = c[:,:,:,:,:,j]
-            cj = cj/np.linalg.norm(cj)
-            ci = ci - (np.dot(cj.flatten(), ci.flatten())) * cj
+            for j in range(i + 1, p):
+                cj = c[:,:,:,:,:,j]
+                cj = cj/np.linalg.norm(cj)
+                ci = ci - (np.dot(cj.flatten(), ci.flatten())) * cj
 
-        ci = ci / np.linalg.norm(ci)
-        c[:,:,:,:,:,i] = ci
+            ci = ci / np.linalg.norm(ci)
+            c[:,:,:,:,:,i] = ci
+
+    elif np.ndim(c) == 10:
+        p = c.shape[-2]
+        for i in range(p):
+            ci = c[:,:,:,:,:,:,:,:,i,:]
+            ci = ci / np.linalg.norm(ci)
+
+            for j in range(i + 1, p):
+                cj = c[:,:,:,:,:,:,:,:,j,:]
+                cj = cj/np.linalg.norm(cj)
+                ci = ci - (np.dot(cj.flatten(), ci.flatten())) * cj
+
+            ci = ci / np.linalg.norm(ci)
+            c[:,:,:,:,:,:,:,:,i,:] = ci
+
+    else:
+        print("wrong dimension block core")
     return c
