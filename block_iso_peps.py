@@ -277,12 +277,57 @@ class b_iso_peps:
         print("\t" + "      ".join("[-----]" for _ in range(L-1)) + "      [-----]")
         print("\n")
 
-def disentangle(matrix, nsl, nsr, nb, nc, dis_options):
-    """ Placeholder function for disentangling. Implement as needed. """
-    if dis_options.get("type", "none") == "none":
-        return np.eye(nsl * nsr)  # Identity if no disentangling is applied
-    else:
-        raise NotImplementedError("Disentangling method not implemented")
+def disentangle(B, nsl, nsr, nb, nc, Niters):
+    """ Disentangler computed using alternating optimization 
+        
+        Arguments
+        ---------
+        B: (nsl*nsr) x (nb*nc) matrix
+        Niters: number of disentangling iterations
+
+        Returns
+        -------
+        Q: (nsl*nsr) x (nsl*nsr) disentangler for B
+    """
+
+    def A(mat, l, r, b, c):
+        # reshapes and permutes a matrix of dimension lr x bc to lc x rb
+        t = np.reshape(mat, (l, r, b, c))
+        tp = np.transpose(t, (0, 3, 1, 2))
+        return np.reshape(tp, (l*c, r*b))
+    
+    def Ainv(mat, l, r, b, c):
+        #reshapes and permutes a matrix of dimension lc x rb to lr x bc
+        t = np.reshape(mat, (l, c, r, b))
+        tp = np.transpose(t, (0, 2, 3, 1))
+        return np.reshape(tp, (l*r, b*c))
+
+    Q = [np.eye(nsl * nsr)]
+    Amat = A(Q[-1]@B, nsl, nsr, nb, nc)
+    u, s, v, err_old = truncated_svd(Amat, 1)
+    Amatr = u@s@v
+    M = Ainv(Amatr, nsl, nsr, nb, nc)@(B.T)
+    u, _, v = np.linalg.svd(M, full_matrices=False)
+    Q.append(u@v)
+
+    for i in range(Niters):
+        Amat = A(Q[-1]@B, nsl, nsr, nb, nc)
+        u, s, v, err_new = truncated_svd(Amat, 1)
+        Amatr = u@s@v
+        M = Ainv(Amatr, nsl, nsr, nb, nc)@(B.T)
+        u, _, v = np.linalg.svd(M, full_matrices=False)
+        Q.append(u@v)
+
+        dE = abs(err_old - err_new)
+        err_old = err_new
+
+        if dE < 1e-8:
+            break
+        
+        # if i % 10 == 0:
+        #     print('disentangler iteration {0}, truncation error {1}'.format(i, err_new))
+        
+    return Q[-1]
 
 def b_mm(X, mm_params):
     """
@@ -292,7 +337,7 @@ def b_mm(X, mm_params):
     ---------
         X: PEPS column
         "mm_params": {"chiV_max": chi, "chiH_max": chi, "etaV_max": chi, "etaH_max": chi, 
-                      "disentangle": False}}
+                      "n_dis_iters": Niters}
 
     Returns
     -------
@@ -301,9 +346,6 @@ def b_mm(X, mm_params):
         err: accumulated truncation error from all SVDs 
             (does NOT directly indicate the global PEPS error of mm)
     """
-
-    # if mm_params["disentangle"] is None:
-    dis_options = {"type": "none"} # no disentangler for now...
 
     chiV_max, chiH_max, etaV_max, etaH_max = mm_params["chiV_max"], mm_params["chiH_max"], mm_params["etaV_max"], mm_params["etaH_max"]
 
@@ -358,7 +400,7 @@ def b_mm(X, mm_params):
 
             # disentangler
             ThetaMatrix1 = ThetaTensor.reshape(nsl * nsr, nb * nc)
-            D = disentangle(ThetaMatrix1, nsl, nsr, nb, nc, dis_options)
+            D = disentangle(ThetaMatrix1, nsl, nsr, nb, nc, mm_params["n_dis_iters"])
             ThetaMatrix1 = D @ ThetaMatrix1
             Dadj = D.T.reshape(nsl, nsr, nsl, nsr)
             Q[i] = ncon([Q[i], Dadj], ((1, 2, -3, -4, -5), (1, 2, -1, -2)))
