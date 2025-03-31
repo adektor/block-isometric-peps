@@ -1,6 +1,7 @@
 import numpy as np
 from ncon import ncon
 from utilities import *
+import time
 
 """
     MPS methods for PEPS column
@@ -75,8 +76,8 @@ def tebd(C, U, O, tebd_params):
     
     return C, info
 
-def orthogonalize(C, chi = 1000):
-    """ Orthogonalize a PEPS column from bottom-to-top 
+def orthogonalize(C, dir = 'up'):
+    """ Orthogonalize a PEPS column
 
         Arguments
         ---------
@@ -84,7 +85,54 @@ def orthogonalize(C, chi = 1000):
 
         Returns
         -------
-        C: PEPS column with orthogonality center at top site
+        C: PEPS column with orthogonality center at top or bottom site
+    """
+
+    L = len(C)
+
+    if dir == 'up':
+        for i in range(L-1, 0, -1):
+            c = C[i]
+            shp = c.shape
+            c = np.transpose(c, (1, 2, 3, 4, 0, 5))
+            c = np.reshape(c, (np.prod(shp[1:5]), shp[0]*shp[5]))
+            q, r = np.linalg.qr(c)
+            # u, s, v, err = truncated_svd(c, chi)
+            # us = u@s
+            C[i] = np.reshape(q.T, (q.shape[1], *shp[1:5], 1))
+            r = np.reshape(r.T, (shp[0], shp[5], r.shape[0]))
+            C[i-1] = ncon([r, C[i-1]], ((1, -6, -3), (-1, -2, 1, -4, -5, -7)))
+            C[i-1] = np.squeeze(C[i-1], axis=-1)
+
+    elif dir == 'down':
+        for i in range(L-1):
+            c = C[i]
+            shp = c.shape
+            c = np.transpose(c, (0, 1, 3, 4, 2, 5))
+            c = np.reshape(c, (shp[0]*shp[1]*shp[3]*shp[4], shp[2]*shp[5]))
+            q, r = np.linalg.qr(c)
+            # u, s, v, err = truncated_svd(c, chi)
+            # us = u@s
+            C[i] = np.reshape(q, (shp[0], shp[1], shp[3], shp[4], q.shape[1], 1))
+            C[i] = np.transpose(C[i], (0, 1, 4, 2, 3, 5))
+            r = np.reshape(r, (r.shape[0], shp[2], shp[5]))
+            C[i+1] = ncon([r, C[i+1]], ((-1, 1, -6), (1, -2, -3, -4, -5, -7)))
+            C[i+1] = np.squeeze(C[i+1], axis=-1)
+    else:
+        print('orthogonalization direction must be up or down')
+
+    return C
+
+def truncate(C, chi):
+    """ truncate a PEPS column from bottom-to-top 
+
+        Arguments
+        ---------
+        C: PEPS column with orthogonalization center at bottom site
+
+        Returns
+        -------
+        C: truncateed PEPS column with orthogonality center at top site
     """
 
     L = len(C)
@@ -100,6 +148,7 @@ def orthogonalize(C, chi = 1000):
         us = np.reshape(us, (shp[0], shp[5], u.shape[1]))
         C[i-1] = ncon([us, C[i-1]], ((1, -6, -3), (-1, -2, 1, -4, -5, -7)))
         C[i-1] = np.squeeze(C[i-1], axis=-1)
+
     return C
 
 def orth_block(c): 

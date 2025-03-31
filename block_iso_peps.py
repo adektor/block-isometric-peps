@@ -4,6 +4,7 @@ from ncon import ncon
 import copy
 from mps import * 
 from utilities import *
+import time
 # from misc import *
 # from tebd import tebd, get_time_evol
 
@@ -122,7 +123,6 @@ class b_iso_peps:
         while step < Nsteps:
             if step % 1 == 0:
                 print("iteration {0} out of {1} with max bond dim {2}".format(step, Nsteps, self.tp["tebd_params"]["chi_max"]))
-                self.print()
             info_ = self._sweep_and_rotate_4x([Us2[0], Us[1], Us2[0], Id],
                                              Os = [None, None, Os[0], Os[1]])
             info["tebd_err"][step] += info_["tebd_err"]
@@ -211,18 +211,23 @@ class b_iso_peps:
 
         for j in range(Lx):
             self.peps[j], tebd_info = tebd(self.peps[j], U, O, self.tp["tebd_params"])
+
             exp_vals += tebd_info["exp_vals"]
             info["tebd_err"].append(tebd_info["tebd_err"])
 
             if j < Lx - 1:
                 Q, R, mm_err = b_mm(self.peps[j], self.tp["mm_params"])
+
                 info["mm_err"].append(mm_err)
                 self.peps[j] = Q
-                self.peps[j+1] = pass_R(R, self.peps[j+1])
+                
+                self.peps[j+1] = pass_R(R, self.peps[j+1])                
+                self.peps[j+1] = orthogonalize(self.peps[j+1], 'down')
+                self.peps[j+1] = truncate(self.peps[j+1], self.tp["tebd_params"]["chi_max"])
 
-                # may need to insert a truncation here...
             else:
-                self.peps[j] = orthogonalize(self.peps[j])
+                # self.peps[j] = orthogonalize(self.peps[j], 'down')
+                self.peps[j] = orthogonalize(self.peps[j], 'up')
 
         info["exp_vals"] = exp_vals
 
@@ -271,25 +276,6 @@ class b_iso_peps:
         print("\t" + "|     |------" * (L-1) + "| " + "    |")
         print("\t" + "      ".join("[-----]" for _ in range(L-1)) + "      [-----]")
         print("\n")
-    
-    # 3 x 3
-        # print("\n")
-        # print(f"\t[-----]  {self.peps[0][0].shape[1]}   [-----]  {self.peps[1][0].shape[1]}   [-----]")
-        # print("\t|     |------|     |------|     | ")
-        # print("\t[-----]      [-----]      [-----] ")
-        # print("\t   |            |            | ")
-        # print(f"\t   | {self.peps[0][1].shape[0]}          | {self.peps[1][1].shape[0]}          | {self.peps[2][1].shape[0]}")
-        # print("\t   |            |            |  ")
-        # print(f"\t[-----]  {self.peps[0][1].shape[1]}   [-----]  {self.peps[1][1].shape[1]}   [-----]")
-        # print("\t|     |------|     |------|     | ")
-        # print("\t[-----]      [-----]      [-----] ")
-        # print("\t   |            |            |        ")
-        # print(f"\t   | {self.peps[0][2].shape[0]}          | {self.peps[1][2].shape[0]}          | {self.peps[2][2].shape[0]}")
-        # print("\t   |            |            |        ")
-        # print(f"\t[-----]  {self.peps[0][2].shape[1]}   [-----]  {self.peps[1][2].shape[1]}   [-----]   ")
-        # print("\t|     |------|     |------|     | ")
-        # print("\t[-----]      [-----]      [-----] ")
-        # print("\n")
 
 def disentangle(matrix, nsl, nsr, nb, nc, dis_options):
     """ Placeholder function for disentangling. Implement as needed. """

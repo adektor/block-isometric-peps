@@ -2,6 +2,7 @@ import numpy as np
 from ncon import ncon
 from scipy.sparse import kron, eye, lil_matrix
 from scipy.sparse.linalg import eigsh
+import time
 
 def truncated_svd(A, k):
     """
@@ -19,11 +20,17 @@ def truncated_svd(A, k):
     Vh_k:
     err: 
     """
+    # start = time.perf_counter()
+
     U, S, Vh = np.linalg.svd(A, full_matrices=False)
     U_k = U[:, :k]
     S_k = np.diag(S[:k])
     Vh_k = Vh[:k, :]
     err = np.linalg.norm(S[k+1:])
+
+    # end = time.perf_counter()
+    # print("Time to svd ({0},{1}): {2} seconds".format(A.shape[0], A.shape[1], end - start))
+
     return U_k, S_k, Vh_k, err
 
 def rotate_core(c):
