@@ -1,6 +1,6 @@
 from block_iso_peps import *
 import matplotlib.pyplot as plt
-# import pickle
+import pickle
 # import pdb
 
 """
@@ -125,25 +125,30 @@ def iso_tebd_ising_2D(L, J, g, p, dts, Nt, t_params):
     return peps, info
 
 if __name__ == '__main__':
-    L, Nt = 3, 200
+    L, Nt = 3, 300
     J, g = 1, 3.5
     p = 1
     dts = [0.01]
-    chi = 4
+    chi = 16
     t_params = {"tebd_params": {"chi_max": chi, "svd_tol": 0}, 
                 "mm_params": {"chiV_max": chi, "chiH_max": chi, "etaV_max": chi, "etaH_max": chi, "n_dis_iters": 100}}
     
     peps, info = iso_tebd_ising_2D(L, J, g, p, dts, Nt, t_params)
     peps.print()
 
-    E = np.sort(info["exp_vals"][:,-1])
-    print(E)
+    # save PEPS
+    with open('tfi_L2_GS.pkl', 'wb') as f:
+        pickle.dump(peps, f)
     
+    # get reference eigenvalues
     H = full_TFI_matrix_2D(L, L, J, g)
     E_ref, _ = eigsh(H, k=p, which='SA')
     E_ref = np.expand_dims(E_ref, axis=1)
 
-    # print
+    # sort PEPS eigenvalues
+    E = np.sort(info["exp_vals"][:,-1])
+
+    # print reference and PEPS eigenvalues
     for i in range(p):
         print(f"ref. eig {i}: {E_ref[i][0]}")
         print(f"peps eig {i}: {E[i]} \n")
