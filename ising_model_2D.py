@@ -125,11 +125,11 @@ def iso_tebd_ising_2D(L, J, g, p, dts, Nt, t_params):
     return peps, info
 
 if __name__ == '__main__':
-    L, Nt = 3, 100
+    L, Nt = 3, 200
     J, g = 1, 3.5
     p = 1
     dts = [0.01]
-    chi = 2
+    chi = 4
     t_params = {"tebd_params": {"chi_max": chi, "svd_tol": 0}, 
                 "mm_params": {"chiV_max": chi, "chiH_max": chi, "etaV_max": chi, "etaH_max": chi, "n_dis_iters": 100}}
     

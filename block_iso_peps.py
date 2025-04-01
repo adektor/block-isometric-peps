@@ -216,15 +216,19 @@ class b_iso_peps:
             info["tebd_err"].append(tebd_info["tebd_err"])
 
             if j < Lx - 1:
-                Q, R, mm_err = b_mm(self.peps[j], self.tp["mm_params"])
-
+                # if j % 2 == 0:
+                    # Q, R, mm_err = b_mm(self.peps[j], self.tp["mm_params"], dir='up')
+                # else:
+                    # Q, R, mm_err = b_mm(self.peps[j], self.tp["mm_params"], dir='down')
+        
+                Q, R, mm_err = b_mm(self.peps[j], self.tp["mm_params"], dir='down')
                 info["mm_err"].append(mm_err)
                 self.peps[j] = Q
-                
-                self.peps[j+1] = pass_R(R, self.peps[j+1])                
+
+                self.peps[j+1] = pass_R(R, self.peps[j+1])
                 self.peps[j+1] = orthogonalize(self.peps[j+1], 'down')
                 self.peps[j+1] = truncate(self.peps[j+1], self.tp["tebd_params"]["chi_max"])
-
+    
             else:
                 # self.peps[j] = orthogonalize(self.peps[j], 'down')
                 self.peps[j] = orthogonalize(self.peps[j], 'up')
@@ -244,7 +248,7 @@ class b_iso_peps:
 
         peps = self.peps
         Lx, Ly = self.Lx, self.Ly
-        rpeps = [[None] * Lx for i in range(Ly)] # rotated dimensions
+        rpeps = [[None] * Lx for i in range(Ly)] # initialize rotated peps
         for x in range(Lx):
             for y in range(Ly):
                 rpeps[y][x] = rotate_core(peps[Lx - x - 1][y]).copy()
@@ -329,7 +333,7 @@ def disentangle(B, nsl, nsr, nb, nc, Niters):
         
     return Q[-1]
 
-def b_mm(X, mm_params):
+def b_mm(X, mm_params, dir='down'):
     """
     Sequential Moses move for block PEPS.
 
@@ -338,6 +342,7 @@ def b_mm(X, mm_params):
         X: PEPS column
         "mm_params": {"chiV_max": chi, "chiH_max": chi, "etaV_max": chi, "etaH_max": chi, 
                       "n_dis_iters": Niters}
+        dir: direction of sweep (and result vertical isometry arrows)
 
     Returns
     -------
@@ -348,6 +353,12 @@ def b_mm(X, mm_params):
     """
 
     chiV_max, chiH_max, etaV_max, etaH_max = mm_params["chiV_max"], mm_params["chiH_max"], mm_params["etaV_max"], mm_params["etaH_max"]
+
+    if dir == 'up':
+        X = flip_col(X)
+        flipped_col = True
+    else:
+        flipped_col = False
 
     k = len(X)
     Q = [None] * k
@@ -429,6 +440,11 @@ def b_mm(X, mm_params):
         Q[i] = np.expand_dims(Q[i], axis=-1)
 
     err = np.sum(e1) + np.sum(e2)
+
+    if flipped_col:
+        Q = flip_col(Q)
+        R = flip_col(R)
+
     return Q, R, err
 
 def pass_R(R, X):

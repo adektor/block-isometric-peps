@@ -56,12 +56,16 @@ def FET(Gamma, sigma, chi_t, max_iter = 20, verbose = 1):
     uvcir = itt.cycle(["u","v"])
     for k in range(max_iter):
         psi_psi = ncon([sigma, Gamma, sigma], ((1, 2), (1, 2, 3, 4), (3, 4)))
+        phi_phi = ncon([u@s@v, Gamma, u@s@v], ((1, 2), (1, 2, 3, 4), (3, 4)))
+        print("<psi,psi>={0}".format(psi_psi))
+        print("<phi,phi>={0}".format(phi_phi))
 
         fix = next(uvcir)
         if fix == "u":
            # R = s @ v
-            P = ncon([sigma, Gamma, v], ((1, 2), (1, 2, 3, -2), (-1, 3)))
+            P = ncon([sigma, Gamma, u], ((1, 2), (1, 2, 3, -2), (3, -1)))
             B = ncon([u, Gamma, u], ((1, -1), (1, -2, 2, -4), (2, -3)))
+
             shp = B.shape
             B = B.reshape(np.prod(shp[:2]), np.prod(shp[2:]))
             Rmax = P.flatten() @ np.linalg.pinv(B, rcond=1e-10, hermitian=True)
@@ -70,7 +74,7 @@ def FET(Gamma, sigma, chi_t, max_iter = 20, verbose = 1):
 
         elif fix == "v":
            # L = u @ s
-            P = ncon([sigma, Gamma, u], ((1, 2), (1, 2, -1, 3), (3, -2)))
+            P = ncon([sigma, Gamma, v], ((1, 2), (1, 2, -1, 3), (-2, 3)))
             B = ncon([v, Gamma, v], ((-2, 1), (-1, 1, -3, 2), (-4, 2)))
 
             sz = B.shape
@@ -79,7 +83,7 @@ def FET(Gamma, sigma, chi_t, max_iter = 20, verbose = 1):
             Lmax = Lmax.reshape(sz[:2])
             u, s, v = truncated_svd(Lmax@v, chi_t)
         
-        s = scale_fix(s, sigma, Gamma, u@s@v)
+        # s = scale_fix(s, sigma, Gamma, u@s@v)
         f.append(fidelity(Gamma, sigma, u@s@v))
 
         if verbose:
@@ -88,14 +92,19 @@ def FET(Gamma, sigma, chi_t, max_iter = 20, verbose = 1):
 
 
 if __name__ == "__main__":
-    chi, chi_t = 8, 2
+    chi, chi_t = 8, 1
     A, B, C, D = np.random.rand(chi, chi, chi, chi),  np.random.rand(chi, chi, chi, chi),  np.random.rand(chi, chi, chi, chi),  np.random.rand(chi, chi, chi, chi)
     A, B, C, D = A/np.linalg.norm(A), B/np.linalg.norm(B), C/np.linalg.norm(C), D/np.linalg.norm(D)
 
     Gamma = ncon([A,B,C,D,A,B,C,D], ((1, 2, -1, 3), (4, 5, 6, 2), (-2, 7, 8, 9), (6, 10, 11, 7), 
                         (1, 12, -3, 3), (4, 5, 13, 12), (-4, 14, 8, 9), (13, 10, 11, 14)))
+    
+    nrm = ncon([Gamma, Gamma], ((1, 2, 3, 4), (1, 2, 3, 4)))
+    print('norm of environment tensor Gamma: {0}'.format(nrm))
+
     sigma = np.eye(chi)
-    u, s, v, f = FET(Gamma, sigma, chi_t)
+    u, s, v, f = FET(Gamma, sigma, chi_t, max_iter=4)
 
     plt.semilogy(f)
+    
     plt.show()

@@ -105,3 +105,23 @@ def full_TFI_matrix_2D(Lx, Ly, J = 1.0, g = 3.5):
     for site in range(N):
         H -= g * local_operator(sx, site)
     return H
+
+def flip_col(C):
+    # if no physical legs, add an extra dim
+    if np.ndim(C[0]) == 5:
+        C = [np.expand_dims(c, axis=-1) for c in C]
+        expanded = True
+    else:
+        expanded = False
+
+    # flip the column
+    L = len(C)
+    fC = [None] * L
+    for i in range(L):
+        fC[-i-1] = np.transpose(C[i], (2, 1, 0, 3, 4, 5))
+
+    # remove added leg if necessary
+    if expanded:
+        fC = [np.squeeze(c, axis=-1) for c in fC]
+    
+    return fC

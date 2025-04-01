@@ -88,6 +88,13 @@ def orthogonalize(C, dir = 'up'):
         C: PEPS column with orthogonality center at top or bottom site
     """
 
+    if np.ndim(C[0]) == 5:
+        C = [np.expand_dims(c, axis=-1) for c in C]
+        expanded = True
+    else:
+        expanded = False
+
+
     L = len(C)
 
     if dir == 'up':
@@ -120,6 +127,9 @@ def orthogonalize(C, dir = 'up'):
             C[i+1] = np.squeeze(C[i+1], axis=-1)
     else:
         print('orthogonalization direction must be up or down')
+
+    if expanded:
+        C = [np.squeeze(c, axis=-1) for c in C]
 
     return C
 
