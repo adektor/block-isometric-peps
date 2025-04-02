@@ -3,6 +3,7 @@ import math
 from ncon import ncon
 import itertools as itt
 from matplotlib import pyplot as plt
+import pickle
 
 def fidelity(Gamma, sigma, sigma_t):
     psi_phi = ncon([sigma, Gamma, sigma_t], ((1, 2), (1, 2, 3, 4), (3, 4)))
@@ -29,7 +30,7 @@ def truncated_svd(A, k):
 def FET(Gamma, sigma, chi_t, max_iter = 20, verbose = 1):
 
     if verbose:
-        print("FET target rank {0} | max_iter {1}".format(chi_t, max_iter))
+        print("------ F.E.T. target rank {0}, max_iter {1} ------ ".format(chi_t, max_iter))
 
     # normalize \psi
     psi_psi = ncon([sigma, Gamma, sigma], ((1, 2), (1, 2, 3, 4), (3, 4)))
@@ -40,9 +41,6 @@ def FET(Gamma, sigma, chi_t, max_iter = 20, verbose = 1):
     
     F = [fidelity(Gamma, sigma, u@s@v)]
     U, S, V = [u], [s], [v]
-
-    if verbose:
-        print("initial fidelity is {0}".format(F[-1]))
 
     # iterative optimization of u,s,v = svd(sigma_t)
     uvcir = itt.cycle(["u","v"])
@@ -69,39 +67,100 @@ def FET(Gamma, sigma, chi_t, max_iter = 20, verbose = 1):
             Lmax = P.flatten() @ np.linalg.pinv(B, rcond=1e-10, hermitian=True)
             Lmax = Lmax.reshape(sz[:2])
             u, s, v = truncated_svd(Lmax@v, chi_t)
-        
-        # s = scale_fix(s, sigma, Gamma, u@s@v)
+
+        U.append(u)
+        S.append(s)
+        V.append(v)
         F.append(fidelity(Gamma, sigma, u@s@v))
 
         if verbose:
-            print("iteration {0} fideltity {1}".format(k, F[-1]))
+            print("  iteration {0} fideltity {1}".format(k, F[-1]))
+    print("----------------------------------------------\n")
     return U, S, V, F
 
-if __name__ == "__main__":
-    chi, chi_t = 8, 1
-    d = 16
-    # A, B, C, D = np.random.rand(chi, chi, chi, chi),  np.random.rand(chi, chi, chi, chi),  np.random.rand(chi, chi, chi, chi),  np.random.rand(chi, chi, chi, chi)
-    # Gamma = ncon([A,B,C,D,A,B,C,D], ((1, 2, -1, 3), (4, 5, 6, 2), (-2, 7, 8, 9), (6, 10, 11, 7), 
-    #                     (1, 12, -3, 3), (4, 5, 13, 12), (-4, 14, 8, 9), (13, 10, 11, 14)))
+def test_fet():
+    chi, chi_t = 2, 1 # starting, truncated bond dimension
+    d = 2 # physical dimension
 
+    # tensors in a 2x2 peps
     A = np.random.rand(1, chi, chi, 1, d)
     B = np.random.rand(chi, chi, 1, 1, d)
     C = np.random.rand(1, 1, chi, chi, d)
     D = np.random.rand(chi, 1, 1, chi, d)
+
+    # normalize each tensor
     A, B, C, D = A/np.linalg.norm(A), B/np.linalg.norm(B), C/np.linalg.norm(C), D/np.linalg.norm(D)
+    
+    # full tensor
     T = ncon([A,B,C,D], ((-5, 1, 3, -1, -6), (3, 4, -7, -8, -2), (-9, -10, 2, 1, -3), (2, -11, -12, 4, -4)))
     T = np.squeeze(T)
     print("shape of tensor T is {0}".format(T.shape))
 
+    # SVD on 1st vertical bond
+    theta = ncon([A,B], ((-1, -2, 1, -3, -4), (1, -5, -6, -7, -8)))
+    shp = theta.shape
+    theta = np.reshape(theta, (np.prod(shp[:4]), np.prod(shp[4:])))
+    u, s, v = truncated_svd(theta, chi)
+
+    At1 = np.reshape(u[:,:chi_t]@s[:chi_t,:chi_t], (*shp[:4], u[:,:chi_t].shape[1]))
+    At1 = np.transpose(At1, (0, 1, 4, 2, 3))
+    Bt1 = np.reshape(v[:chi_t,:], (v[:chi_t,:].shape[0], *shp[4:]))
+
+    Tt1 = ncon([At1,Bt1,C,D], ((-5, 1, 3, -1, -6), (3, 4, -7, -8, -2), (-9, -10, 2, 1, -3), (2, -11, -12, 4, -4)))
+    Tt1 = np.squeeze(Tt1)
+    naive_t_err = np.linalg.norm(T-Tt1)/np.linalg.norm(T)
+
+    # setup for FET
+    # initialize with s as bond matrix:
+    # A = np.reshape(u, (*shp[:4], u.shape[1]))
+    # A = np.transpose(A, (0, 1, 4, 2, 3))
+    # B = np.reshape(v, (v.shape[0], *shp[4:]))
+    # sigma = s
+
+    # or not: 
+    sigma = np.eye(chi)
+
     Gamma = ncon([A,B,C,D,A,B,C,D], ((-5, 2, -1, -6, 1), (-2, 4, -7, -8, 9), (-9, -10, 3, 2, 10), (3, -11, -12, 4, 8), 
                                      (-13, 5, -3, -14, 1), (-4, 7, -15, -16, 9), (-17, -18, 6, 5, 10), (6, -19, -20, 7, 8)))
+    
     Gamma = np.squeeze(Gamma)
-    print("shape of environment tensor Gamma is {0}".format(Gamma.shape))
-    nrm = ncon([Gamma, Gamma], ((1, 2, 3, 4), (1, 2, 3, 4)))
-    print('norm of environment tensor Gamma: {0}'.format(nrm))
-
-    sigma = np.eye(chi)
     U, S, V, F = FET(Gamma, sigma, chi_t, max_iter=5)
+    fet_err = []
+    for i in range(len(S)):
+        u, s, v = U[i], S[i], V[i]
+        At2 = ncon([u@s, A], ((1, -3), (-1, -2, 1, -4, -5)))
+        Bt2 = ncon([v, B], ((-1, 1), (1, -2, -3, -4, -5)))
 
-    plt.semilogy(F)
+        Tt2 = ncon([At2,Bt2,C,D], ((-5, 1, 3, -1, -6), (3, 4, -7, -8, -2), (-9, -10, 2, 1, -3), (2, -11, -12, 4, -4)))
+        Tt2 = np.squeeze(Tt2)
+        fet_err.append(np.linalg.norm(T-Tt2)/np.linalg.norm(T))
+
+
+    # print
+    print('SVD rel. trunc. error: {0}'.format(naive_t_err))
+    print('FET rel. trunc. error: {0}'.format(fet_err[-1]))
+
+    # plot
+    fig, axs = plt.subplots(2, 1, figsize=(6, 6))  # 2 rows, 1 column
+
+    axs[0].semilogy(fet_err, label='FET')
+    axs[0].semilogy([naive_t_err] * len(S), label='SVD')
+    axs[0].legend()  
+    axs[0].set_title('relative error')
+
+    axs[1].semilogy(F)
+    axs[1].set_title('fidelity')
+
+    plt.xlabel("iteration")
+    plt.tight_layout()
     plt.show()
+
+
+def test_fet_on_iso():
+    with open('fet.py tfi_L2_GS.pkl', 'rb') as f:
+        peps = pickle.load(f)
+
+    return
+
+if __name__ == "__main__":
+    test_fet()

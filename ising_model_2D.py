@@ -137,8 +137,8 @@ if __name__ == '__main__':
     peps.print()
 
     # save PEPS
-    with open('tfi_L2_GS.pkl', 'wb') as f:
-        pickle.dump(peps, f)
+    # with open('tfi_L2_GS.pkl', 'wb') as f:
+    #     pickle.dump(peps, f)
     
     # get reference eigenvalues
     H = full_TFI_matrix_2D(L, L, J, g)
