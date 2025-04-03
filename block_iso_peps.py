@@ -60,7 +60,14 @@ class b_iso_peps:
             Warning: Only use for small PEPS.
         """
 
-        if self.Lx == 1 and self.Ly == 3:
+        if self.Lx == 2 and self.Ly == 2:
+            peps_flat = [item for sublist in self.peps for item in sublist]
+            v = ncon(peps_flat, ((-9, 1, 2, -10, -1, -5), 
+                                 (2, 4, -15, -16, -2, -7), 
+                                 (-11, -12, 3, 1, -3, -6), 
+                                 (3, -13, -14, 4, -4, -8)))
+
+        elif self.Lx == 1 and self.Ly == 3:
             v = ncon(self.peps[0], ((-12, -5, 1, -6, -1, -4),
                                     (1, -7, 2, -8, -2, -13), 
                                     (2, -9, -10, -11, -3, -14)))
@@ -79,6 +86,7 @@ class b_iso_peps:
         else:
             v = 0
             print("PEPS dimensions not supported for contraction")
+            
         return np.squeeze(v)
 
     def tebd2(self, Os, dt, Nsteps = None, min_dE = None):

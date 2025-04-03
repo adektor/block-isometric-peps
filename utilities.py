@@ -20,7 +20,7 @@ def truncated_svd(A, k):
     Vh_k:
     err: 
     """
-    # start = time.perf_counter()
+    start = time.perf_counter()
 
     U, S, Vh = np.linalg.svd(A, full_matrices=False)
     U_k = U[:, :k]
@@ -28,7 +28,7 @@ def truncated_svd(A, k):
     Vh_k = Vh[:k, :]
     err = np.linalg.norm(S[k+1:])
 
-    # end = time.perf_counter()
+    end = time.perf_counter()
     # print("Time to svd ({0},{1}): {2} seconds".format(A.shape[0], A.shape[1], end - start))
 
     return U_k, S_k, Vh_k, err

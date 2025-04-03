@@ -1,6 +1,7 @@
 import numpy as np
 import math
 from ncon import ncon
+from block_iso_peps import *
 import itertools as itt
 from matplotlib import pyplot as plt
 import pickle
@@ -80,14 +81,13 @@ def FET(Gamma, sigma, chi_t, max_iter = 20, verbose = 1):
 
 def test_fet():
     chi, chi_t = 2, 1 # starting, truncated bond dimension
+    
     d = 2 # physical dimension
-
     # tensors in a 2x2 peps
     A = np.random.rand(1, chi, chi, 1, d)
     B = np.random.rand(chi, chi, 1, 1, d)
     C = np.random.rand(1, 1, chi, chi, d)
     D = np.random.rand(chi, 1, 1, chi, d)
-
     # normalize each tensor
     A, B, C, D = A/np.linalg.norm(A), B/np.linalg.norm(B), C/np.linalg.norm(C), D/np.linalg.norm(D)
     
@@ -134,7 +134,6 @@ def test_fet():
         Tt2 = ncon([At2,Bt2,C,D], ((-5, 1, 3, -1, -6), (3, 4, -7, -8, -2), (-9, -10, 2, 1, -3), (2, -11, -12, 4, -4)))
         Tt2 = np.squeeze(Tt2)
         fet_err.append(np.linalg.norm(T-Tt2)/np.linalg.norm(T))
-
 
     # print
     print('SVD rel. trunc. error: {0}'.format(naive_t_err))
